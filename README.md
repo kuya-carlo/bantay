@@ -6,8 +6,8 @@ Bantay is a pre-push hook that prevents accidental credential leakage by combini
 
 ## Features
 
-- 🔍 **Secret Scanning**: Scans staged changes using `detect-secrets`.
-- 🧠 **AI Risk Scoring**: Uses Vultr Inference (Llama 3.3 70B) to categorize findings (LOW/MEDIUM/HIGH).
+- 🔍 **Secret Scanning**: Scans staged changes using `secretlint`.
+- 🧠 **AI Risk Scoring**: Uses Vultr Inference (Qwen 2.5 Coder 32B) to categorize findings (LOW/MEDIUM/HIGH).
 - 🔐 **Auth0 CIBA**: Medium-risk pushes trigger a cross-device authorization request via Auth0.
 - 📱 **ntfy Alerts**: Push notifications to your phone when a push is interrupted.
 - 🏗️ **Library-First**: Core logic is a standalone TypeScript library.
@@ -15,7 +15,6 @@ Bantay is a pre-push hook that prevents accidental credential leakage by combini
 ## Getting Started
 
 ### 1. Prerequisites
-- [uv](https://docs.astral.sh/uv/) (for running `detect-secrets`)
 - [pnpm](https://pnpm.io/)
 - Node.js 20+
 
@@ -46,8 +45,8 @@ Required variables:
 ## How it Works
 
 1. **Pre-push**: Every push triggers `bantay scan`.
-2. **Detection**: The tool extracts the staged diff and runs `detect-secrets`.
-3. **Scoring**: A LangGraph state machine calls Llama 3.3 to assess the risk.
+2. **Detection**: The tool extracts the staged diff and runs Secretlint and filename pattern matching in-process.
+3. **Scoring**: A LangGraph state machine calls Qwen 2.5 Coder to assess the risk.
 4. **Decision**:
    - **LOW**: Push allowed automatically.
    - **MEDIUM**: Push **pauses**. You receive an alert on `ntfy`. Authorization requested via Auth0 CIBA.

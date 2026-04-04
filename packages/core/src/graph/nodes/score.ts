@@ -18,7 +18,7 @@ export async function scoreRisk(state: any) {
   }
 
   const model = new ChatOpenAI({
-    modelName: "llama-3.3-70b-instruct",
+    modelName: "qwen2.5-coder-32b-instruct",
     apiKey: process.env.VULTR_API_KEY,
     configuration: {
       baseURL: "https://api.vultrinference.com/v1",
