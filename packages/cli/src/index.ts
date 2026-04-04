@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { scanCommand } from "./commands/scan";
+import { scanCommand } from "./commands/scan.js";
+import { initCommand } from "./commands/init.js";
 
 const program = new Command();
 
@@ -25,9 +26,12 @@ program
   .command("init")
   .description("Initialize Git Guardian and install pre-push hook")
   .action(async () => {
-    // This will be implemented in Phase 4
-    console.log("Initializing Git Guardian...");
-    console.log("Tip: Pre-push hook installation coming in Phase 4.");
+    try {
+      await initCommand();
+    } catch (error) {
+      console.error(error);
+      process.exit(1);
+    }
   });
 
 program.parse();
