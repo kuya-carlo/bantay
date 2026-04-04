@@ -1,5 +1,5 @@
 import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
-import { GitDiffSchema, SecretFindingSchema, RiskAssessmentSchema } from "../types/schemas.js";
+import { GitDiffSchema, SecretFindingSchema, RiskAssessmentSchema } from "../types/schemas";
 import { z } from "zod";
 
 /**

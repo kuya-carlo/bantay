@@ -1,0 +1,6 @@
+ntfy:
+  topic: "hackathon-test"
+git:
+  protectedBranches: ["main"]
+thresholds:
+  highRiskLineCount: 50

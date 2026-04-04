@@ -2,6 +2,7 @@
   "name": "@git-guardian/cli",
   "version": "0.1.0",
   "private": true,
+  
   "bin": {
     "git-guardian": "./bin/git-guardian"
   },

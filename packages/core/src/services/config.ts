@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+// @ts-ignore
 import yaml from "js-yaml";
 import { z } from "zod";
 
@@ -9,13 +10,13 @@ import { z } from "zod";
 export const ConfigSchema = z.object({
   ntfy: z.object({
     topic: z.string().default("mytopic"),
-  }),
+  }).default({ topic: "mytopic" }),
   git: z.object({
     protectedBranches: z.array(z.string()).default(["main", "master"]),
-  }),
+  }).default({ protectedBranches: ["main", "master"] }),
   thresholds: z.object({
     highRiskLineCount: z.number().default(100),
-  }).default({}),
+  }).default({ highRiskLineCount: 100 }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
