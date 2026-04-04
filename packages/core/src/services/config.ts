@@ -12,11 +12,11 @@ export const ConfigSchema = z.object({
     topic: z.string().default("mytopic"),
   }).default({ topic: "mytopic" }),
   git: z.object({
-    protectedBranches: z.array(z.string()).default(["main", "master"]),
-  }).default({ protectedBranches: ["main", "master"] }),
+    protectedBranches: z.array(z.string()).default(["main", "master", "prod"]),
+  }).default({ protectedBranches: ["main", "master", "prod"] }),
   thresholds: z.object({
-    highRiskLineCount: z.number().default(100),
-  }).default({ highRiskLineCount: 100 }),
+    highRiskLineCount: z.number().default(1000),
+  }).default({ highRiskLineCount: 1000 }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -26,12 +26,21 @@ export async function initCommand() {
     await fs.access(configPath);
     console.log(chalk.dim("- .guardian.yaml already exists. Skipping."));
   } catch (e) {
-    const defaultConfig = `ntfy:
-  topic: "your-ntfy-topic"
+    const defaultConfig = `# Git Guardian Configuration
+# Copy .env.example to .env and fill in secrets before running git-guardian init
+
+ntfy:
+  topic: "hackathon-test"
+  # url and auth are loaded from NTFY_URL, NTFY_USERNAME, NTFY_PASSWORD env vars
+
+auth0:
+  # domain and clientId are loaded from AUTH0_DOMAIN, AUTH0_CLIENT_ID env vars
+
 git:
-  protectedBranches: ["main", "master"]
+  protectedBranches: ["main", "master", "prod"]
+
 thresholds:
-  highRiskLineCount: 100
+  highRiskLineCount: 1000  # PRD spec: chungus commit threshold
 `;
     await fs.writeFile(configPath, defaultConfig);
     console.log(chalk.green("✅ Created default .guardian.yaml"));
