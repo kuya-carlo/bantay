@@ -1,8 +1,8 @@
-# Git Guardian 🛡️ (Auth0 Hackathon 2026)
+# Bantay 🛡️ (Auth0 Hackathon 2026)
 
 **Security-first secret detection with Auth0 "Authorized to Act" Human-in-the-Loop.**
 
-Git Guardian is a pre-push hook that prevents accidental credential leakage by combining automated scanning with AI-powered risk assessment and human-initiated authorization.
+Bantay is a pre-push hook that prevents accidental credential leakage by combining automated scanning with AI-powered risk assessment and human-initiated authorization.
 
 ## Features
 
@@ -27,7 +27,7 @@ pnpm install
 # Build the monorepo
 pnpm build
 
-# Initialize Git Guardian in your repo
+# Initialize Bantay in your repo
 node packages/cli/dist/index.js init
 ```
 
@@ -45,7 +45,7 @@ Required variables:
 
 ## How it Works
 
-1. **Pre-push**: Every push triggers `git-guardian scan`.
+1. **Pre-push**: Every push triggers `bantay scan`.
 2. **Detection**: The tool extracts the staged diff and runs `detect-secrets`.
 3. **Scoring**: A LangGraph state machine calls Llama 3.3 to assess the risk.
 4. **Decision**:

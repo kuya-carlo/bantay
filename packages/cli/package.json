@@ -1,16 +1,16 @@
 {
-  "name": "@git-guardian/cli",
+  "name": "@bantay/cli",
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "git-guardian": "./bin/git-guardian"
+    "bantay": "./bin/bantay"
   },
   "scripts": {
     "build": "tsc",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "@git-guardian/core": "workspace:*",
+    "@bantay/core": "workspace:*",
     "chalk": "^4.1.0",
     "commander": "^11.0.0",
     "dotenv": "^16.6.1"

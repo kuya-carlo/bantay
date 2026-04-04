@@ -1,6 +1,16 @@
 import { z } from "zod";
 
 /**
+ * Common finding interface for scanners
+ */
+export interface Finding {
+  file: string;
+  line: number;
+  type: string;
+  value: string;
+}
+
+/**
  * Schema for raw git diff input
  */
 export const GitDiffSchema = z.object({

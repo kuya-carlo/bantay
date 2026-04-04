@@ -21,7 +21,7 @@ async function decide(state) {
         console.log(`[decide] MEDIUM risk detected. Triggering Human-in-the-Loop approval.`);
         // The actual interrupt
         const response = (0, langgraph_1.interrupt)({
-            message: "Git Guardian detected a MEDIUM risk secret. Do you authorize this push?",
+            message: "Bantay detected a MEDIUM risk secret. Do you authorize this push?",
             assessment: riskAssessment
         });
         // When resumed (after CIBA), assessment result is stored in state

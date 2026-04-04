@@ -6,7 +6,7 @@ import chalk from "chalk";
 export function formatAssessment(assessment: any) {
   const { tier, reason, suggestion } = assessment;
   
-  const header = chalk.bold.underline("\n🛡️ Git Guardian Risk Assessment\n");
+  const header = chalk.bold.underline("\n🛡️ Bantay Risk Assessment\n");
   
   let tierColor = chalk.green;
   let symbol = "✅";

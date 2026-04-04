@@ -23,7 +23,7 @@ export class NotificationService {
     
     const headers: Record<string, string> = {
       "Authorization": `Basic ${this.auth}`,
-      "Title": "🛡️ Git Guardian Security Alert",
+      "Title": "🛡️ Bantay Security Alert",
       "Priority": "4", // High
       "Tags": "warning,shield",
     };

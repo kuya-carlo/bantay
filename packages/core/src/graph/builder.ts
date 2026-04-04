@@ -3,9 +3,9 @@ import { GitDiffSchema, SecretFindingSchema, RiskAssessmentSchema } from "../typ
 import { z } from "zod";
 
 /**
- * State definition for the Git Guardian Graph
+ * State definition for the Bantay Graph
  */
-export const GitGuardianState = Annotation.Root({
+export const BantayState = Annotation.Root({
   // Metadata about the scan
   metadata: Annotation<z.infer<typeof GitDiffSchema>>({
     reducer: (x, y) => ({ ...x, ...y }),
@@ -32,7 +32,7 @@ export const GitGuardianState = Annotation.Root({
 /**
  * Node: Extract Metadata
  */
-async function extractMetadata(state: typeof GitGuardianState.State) {
+async function extractMetadata(state: typeof BantayState.State) {
   console.log("[Node] Extracting metadata...");
   // Stub: Logic to be implemented in Phase 3
   return { metadata: state.metadata };
@@ -41,7 +41,7 @@ async function extractMetadata(state: typeof GitGuardianState.State) {
 /**
  * Node: Run Detect Secrets
  */
-async function runDetectSecrets(state: typeof GitGuardianState.State) {
+async function runScan(state: typeof BantayState.State) {
   console.log("[Node] Running detect-secrets...");
   // Stub: Logic to be implemented in Phase 3
   return { findings: [] };
@@ -50,7 +50,7 @@ async function runDetectSecrets(state: typeof GitGuardianState.State) {
 /**
  * Node: Risk Scoring
  */
-async function scoreRisk(state: typeof GitGuardianState.State) {
+async function scoreRisk(state: typeof BantayState.State) {
   console.log("[Node] Scoring risk...");
   // Stub: Logic to be implemented in Phase 3
   return { assessment: { riskTier: "low", reason: "Stub", suggestion: "None" } };
@@ -59,7 +59,7 @@ async function scoreRisk(state: typeof GitGuardianState.State) {
 /**
  * Node: Final Decision
  */
-async function decide(state: typeof GitGuardianState.State) {
+async function decide(state: typeof BantayState.State) {
   console.log("[Node] Making final decision...");
   // Stub: Logic to be implemented in Phase 3
   return { decision: "ALLOW" };
@@ -68,15 +68,15 @@ async function decide(state: typeof GitGuardianState.State) {
 /**
  * Build and compile the graph
  */
-export function createGitGuardianGraph() {
-  const builder = new StateGraph(GitGuardianState)
+export function createBantayGraph() {
+  const builder = new StateGraph(BantayState)
     .addNode("extract_metadata", extractMetadata)
-    .addNode("run_detect_secrets", runDetectSecrets)
+    .addNode("run_scan", runScan)
     .addNode("score_risk", scoreRisk)
     .addNode("decide", decide)
     .addEdge(START, "extract_metadata")
-    .addEdge("extract_metadata", "run_detect_secrets")
-    .addEdge("run_detect_secrets", "score_risk")
+    .addEdge("extract_metadata", "run_scan")
+    .addEdge("run_scan", "score_risk")
     .addEdge("score_risk", "decide")
     .addEdge("decide", END);
 

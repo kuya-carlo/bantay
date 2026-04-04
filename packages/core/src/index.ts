@@ -1,5 +1,5 @@
-export * from "./services/auth0";
-export * from "./services/detectsecrets";
+export * from "./services/auth0.js";
+export * from "./services/scanner.js";
 export * from "./services/config";
 export * from "./services/ntfy";
 export * from "./services/github";

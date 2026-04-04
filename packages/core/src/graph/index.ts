@@ -5,9 +5,9 @@ import { scoreRisk } from "./nodes/score";
 import { decide } from "./nodes/decide";
 
 /**
- * State definition for the Git Guardian graph
+ * State definition for the Bantay graph
  */
-export const GitGuardianState = Annotation.Root({
+export const BantayState = Annotation.Root({
   // Raw input: git diff
   diff: Annotation<string>(),
   // findings from detect-secrets
@@ -34,10 +34,10 @@ export const GitGuardianState = Annotation.Root({
 });
 
 /**
- * Builds the Git Guardian state machine
+ * Builds the Bantay state machine
  */
 export function buildGraph() {
-  const builder = new StateGraph(GitGuardianState)
+  const builder = new StateGraph(BantayState)
     .addNode("scan", scan)
     .addNode("score", scoreRisk)
     .addNode("decide", decide)

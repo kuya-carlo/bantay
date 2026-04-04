@@ -1,6 +1,6 @@
-import { DetectSecretsService } from "../../services/detectsecrets";
+import { ScannerService } from "../../services/scanner.js";
 
-const scanner = new DetectSecretsService();
+const scanner = new ScannerService();
 
 /**
  * node to run detect-secrets on the provided diff

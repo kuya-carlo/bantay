@@ -23,7 +23,7 @@ export async function decide(state: any) {
       
       // The actual interrupt
       const response = interrupt({
-         message: "Git Guardian detected a MEDIUM risk secret. Do you authorize this push?",
+         message: "Bantay detected a MEDIUM risk secret. Do you authorize this push?",
          assessment: riskAssessment
       });
 

@@ -5,7 +5,7 @@ import yaml from "js-yaml";
 import { z } from "zod";
 
 /**
- * Schema for .guardian.yaml
+ * Schema for .bantay.yaml
  */
 export const ConfigSchema = z.object({
   ntfy: z.object({
@@ -22,18 +22,18 @@ export const ConfigSchema = z.object({
 export type Config = z.infer<typeof ConfigSchema>;
 
 /**
- * Service to load and manage Git Guardian configuration
+ * Service to load and manage Bantay configuration
  */
 export class ConfigService {
   private config: Config | null = null;
 
   /**
-   * Loads the configuration from .guardian.yaml
+   * Loads the configuration from .bantay.yaml
    * @param projectRoot Root directory of the project
    * @returns Loaded configuration
    */
   async load(projectRoot: string): Promise<Config> {
-    const configPath = path.join(projectRoot, ".guardian.yaml");
+    const configPath = path.join(projectRoot, ".bantay.yaml");
     
     try {
       const content = await fs.readFile(configPath, "utf-8");
@@ -41,7 +41,7 @@ export class ConfigService {
       this.config = ConfigSchema.parse(raw);
     } catch (error) {
       // If file doesn't exist, use default configuration
-      console.warn(`[Config] Using default configuration because .guardian.yaml was not found at ${configPath}.`);
+      console.warn(`[Config] Using default configuration because .bantay.yaml was not found at ${configPath}.`);
       this.config = ConfigSchema.parse({});
     }
 

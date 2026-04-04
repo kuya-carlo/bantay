@@ -7,7 +7,7 @@ import { initCommand } from "./commands/init.js";
 const program = new Command();
 
 program
-  .name("git-guardian")
+  .name("bantay")
   .description("Security-first secret detection with Auth0 Human-in-the-Loop")
   .version("0.1.0");
 
@@ -25,7 +25,7 @@ program
 
 program
   .command("init")
-  .description("Initialize Git Guardian and install pre-push hook")
+  .description("Initialize Bantay and install pre-push hook")
   .action(async () => {
     try {
       await initCommand();

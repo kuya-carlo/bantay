@@ -1,8 +1,7 @@
 {
-  "name": "@git-guardian/core",
+  "name": "@bantay/core",
   "version": "0.1.0",
   "private": true,
-  
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -16,13 +15,16 @@
     "@langchain/langgraph": "0.4.9",
     "@langchain/langgraph-checkpoint": "0.1.1",
     "@langchain/openai": "^0.3.0",
-    "zod": "^3.22.0",
+    "@secretlint/core": "^11.5.0",
+    "@secretlint/node": "^11.4.1",
+    "@secretlint/secretlint-rule-preset-recommend": "^11.4.1",
     "axios": "^1.6.0",
+    "dotenv": "^16.3.0",
     "js-yaml": "^4.1.0",
-    "dotenv": "^16.3.0"
+    "zod": "^3.22.0"
   },
   "devDependencies": {
-    "vitest": "^1.0.0",
-    "@types/js-yaml": "^4.0.9"
+    "@types/js-yaml": "^4.0.9",
+    "vitest": "^1.0.0"
   }
 }

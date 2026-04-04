@@ -36,7 +36,7 @@ export class Auth0Service {
     return this.auth0AI.withAsyncAuthorization({
       // @ts-ignore
       userID: (_params: any, config: any) => config.configurable?.user_id || "default_user",
-      bindingMessage: "Git Guardian: A medium-risk push attempt was detected. Do you authorize this action?",
+      bindingMessage: "Bantay: A medium-risk push attempt was detected. Do you authorize this action?",
       scopes: ["openid"],
       onAuthorizationInterrupt: async (interrupt: any, context: any) => {
          if (this.notificationService && this.ntfyTopic) {
@@ -80,7 +80,7 @@ export class Auth0Service {
     return this.auth0AI.withAsyncAuthorization({
        // @ts-ignore
        userID: (_params: any, config: any) => config.configurable?.user_id || "default_user",
-       bindingMessage: "Git Guardian: A medium-risk push attempt was detected. Do you authorize this action?",
+       bindingMessage: "Bantay: A medium-risk push attempt was detected. Do you authorize this action?",
        scopes: ["openid"],
        onAuthorizationInterrupt: async (interrupt: any, context: any) => {
           if (this.notificationService && this.ntfyTopic) {

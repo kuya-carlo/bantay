@@ -60,7 +60,7 @@ Return only the JSON.`;
       riskAssessment: {
         tier: "high",
         reason: "Risk assessment failed (LLM unreachable). Defaulting to high risk per safety policy.",
-        suggestion: "Manually review findings in .guardian/reports."
+        suggestion: "Manually review findings in .bantay/reports."
       }
     };
   }

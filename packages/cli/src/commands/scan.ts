@@ -1,15 +1,20 @@
 import { execSync } from "node:child_process";
 // @ts-ignore
-import { buildGraph } from "@git-guardian/core";
+import { buildGraph } from "@bantay/core";
 // @ts-ignore
-import { Auth0Service, NotificationService, ConfigService } from "@git-guardian/core";
+import { Auth0Service, NotificationService, ConfigService } from "@bantay/core";
 import { formatAssessment, formatFindings, formatInterrupt } from "../formatters";
 import chalk from "chalk";
 
 /**
- * Executes the git-guardian scan command
+ * Executes the bantay scan command
  */
 export async function scanCommand() {
+  if (process.env.BANTAY_FORCE === "1") {
+    console.log(chalk.yellow("⚠️  Bantay: Force bypass detected (BANTAY_FORCE=1). Skipping security scan."));
+    process.exit(0);
+  }
+
   const configService = new ConfigService();
   const config = await configService.load(process.cwd());
 
@@ -41,7 +46,7 @@ export async function scanCommand() {
   }
 
   // 2. Initialize and run graph
-  console.log(chalk.blue("🛡️  Git Guardian: Scanning staged changes..."));
+  console.log(chalk.blue("🛡️  Bantay: Scanning staged changes..."));
   const graph = buildGraph();
   const threadID = `push-${Date.now()}`;
   const runConfig = { configurable: { thread_id: threadID } };
