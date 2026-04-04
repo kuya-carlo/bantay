@@ -6,6 +6,12 @@ packages/*/dist/
 /tmp
 /out-tsc
 
+# Build artifacts — never commit these
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+
 # Runtime data
 pids
 *.pid
@@ -62,6 +68,8 @@ yarn-error.log*
 # Dependency directories
 node_modules/
 jspm_packages/
+.pnp
+.pnp.js
 
 # Optional npm cache directory
 .npm
@@ -78,8 +86,13 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
+# Secrets
 .env
+!.env.example
+
+# Test artifacts
+test_secret.txt
+secret_test.txt
 
 # next.js build output
 .next
@@ -91,7 +104,9 @@ lerna-debug.log
 .DS_Store
 Thumbs.db
 
-# spec-kit
-.agent/
+# Agent/spec-kit working files
 .specify/
+.agent/
 specs/
+walkthrough.md
+tsconfig.json.bak
