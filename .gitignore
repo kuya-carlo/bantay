@@ -6,7 +6,8 @@ packages/*/dist/
 /tmp
 /out-tsc
 
-# Build artifacts — never commit these
+# Build artifacts
+dist/
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts
