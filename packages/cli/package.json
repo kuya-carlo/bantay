@@ -1,0 +1,17 @@
+{
+  "name": "@git-guardian/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "git-guardian": "./bin/git-guardian"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@git-guardian/core": "workspace:*",
+    "commander": "^11.0.0",
+    "chalk": "^4.1.0"
+  }
+}

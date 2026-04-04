@@ -1,0 +1,25 @@
+{
+  "name": "git-guardian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Security-First, Library-First CLI with LangGraph and Auth0 CIBA",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@auth0/ai-langchain": "5.0.0"
+    }
+  }
+}
