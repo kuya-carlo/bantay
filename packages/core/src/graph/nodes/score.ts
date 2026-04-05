@@ -1,78 +1,78 @@
 import axios from "axios";
+import { loadSecrets } from "../../services/secrets";
 import { RiskAssessmentSchema } from "../../types/schemas";
 
 /**
- * node to score the risk of detected secrets using an OpenAI-compatible LLM
+ * Resolves the LLM API key from env or encrypted secrets
  */
-export async function scoreRisk(state: any) {
-  const { findings } = state;
-  const findingsRaw = findings;
+async function resolveLlmKey(): Promise<string> {
+  if (process.env.BANTAY_LLM_API_KEY) return process.env.BANTAY_LLM_API_KEY;
+  const secrets = await loadSecrets();
+  if (secrets.BANTAY_LLM_API_KEY) return secrets.BANTAY_LLM_API_KEY;
+  throw new Error("Not authenticated. Run 'bantay login' first. (Missing BANTAY_LLM_API_KEY)");
+}
+
+/**
+ * Node that scores the total risk of the findings using an OpenAI-compatible LLM
+ */
+export async function scoreRisk(state: any): Promise<any> {
+  const { findings, repoMetadata } = state;
 
   if (!findings || findings.length === 0) {
     return {
       tier: "low",
       reason: "No secrets detected in the diff.",
-      suggestion: "Safe to push."
+      suggestion: "Safe to push.",
     };
   }
 
-  // Provider-agnostic LLM config
-  const baseURL = process.env.LLM_BASE_URL || "https://api.vultrinference.com/v1";
-  const apiKey = process.env.LLM_API_KEY || process.env.VULTR_API_KEY;
-  const model = process.env.LLM_MODEL || "Qwen/Qwen2.5-Coder-32B-Instruct";
+  const apiKey = await resolveLlmKey();
+  const baseUrl = process.env.BANTAY_LLM_BASE_URL || "https://api.openai.com/v1";
+  const model = process.env.BANTAY_LLM_MODEL || "gpt-4-turbo";
+
+  const prompt = `
+    You are a security expert. Analyze the following secret detection findings from a git diff and assess the risk level.
+    Repository Visibility: ${repoMetadata?.repoVisibility || "unknown"}
+    
+    Findings (values are masked for security, but the TYPE is what matters):
+    ${JSON.stringify(findings, null, 2)}
+    
+    IMPORTANT: A masked or truncated value still represents a REAL secret.
+    
+    Respond ONLY with a JSON object:
+    - tier: "low" | "medium" | "high"
+    - reason: short explanation
+    - suggestion: how to fix it
+  `;
 
   try {
     const response = await axios.post(
-      `${baseURL}/chat/completions`,
+      `${baseUrl}/chat/completions`,
       {
-        model: model,
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: `You are a security expert. Analyze the following secret detection findings from a git diff and assess the risk level.
-
-Findings (values are masked for security, but the TYPE is what matters):
-${JSON.stringify(findingsRaw, null, 2)}
-
-IMPORTANT: A masked or truncated value still represents a REAL secret.
-
-Respond ONLY with a JSON object:
-- tier: "low" | "medium" | "high"
-- reason: short explanation
-- suggestion: how to fix it
-
-Criteria:
-- HIGH: Any finding with type containing "API Key", "Token", "Secret", "Password", "Credential", "Private Key", AWS/GitHub/OpenAI/Anthropic/Stripe patterns. AUTO-BLOCK.
-- MEDIUM: JWT tokens, high-entropy strings, source map files, unknown patterns. Requires HUMAN AUTHORIZATION.
-- LOW: Only if findings array is empty or contains only false positives explicitly labeled as such.
-
-When in doubt, score HIGH. Return only the JSON.`
-          }
-        ]
+        model,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
       },
       {
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
       }
     );
 
     const content = response.data.choices[0].message.content;
-    // Extract JSON if wrapped in markdown
     const jsonStr = content.match(/\{[\s\S]*\}/)?.[0] || content;
-    const assessment = JSON.parse(jsonStr);
-    assessment.tier = assessment.tier.trim().toLowerCase();
-
-    return RiskAssessmentSchema.parse(assessment);
+    const risk = RiskAssessmentSchema.parse(JSON.parse(jsonStr));
+    return risk;
   } catch (error: any) {
-    console.error(`[LLM] Error scoring risk: ${error.message}`);
-    // Fail-Closed: High risk if LLM fails (Policy C/A)
+    console.error(
+      `[Score] LLM check failed: ${error.message}. Defaulting to HIGH risk for safety.`
+    );
     return {
       tier: "high",
-      reason: "Risk assessment failed. Defaulting to high risk per safety policy.",
-      suggestion: "Manually review findings before pushing."
+      reason: `Risk assessment failed: ${error.message}`,
+      suggestion: "Manually review the findings before pushing.",
     };
   }
 }

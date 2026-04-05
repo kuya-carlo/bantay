@@ -2,14 +2,15 @@ import { lintSource } from "@secretlint/core";
 import { creator as recommendPreset } from "@secretlint/secretlint-rule-preset-recommend";
 import path from "node:path";
 import { Finding } from "../types/schemas";
+import { getGithubToken } from "./auth0";
+import { getRepoVisibility } from "./github";
+import { BantayConfig } from "./config";
 
 /**
  * Pure Node.js service for secret detection in Bantay
  */
 export class ScannerService {
-  private fileNameRegex = [
-    /\.pem$/, /\.key$/, /id_rsa$/, /\.env$/, /credentials\.json$/, /\.pfx$/, /\.map$/
-  ];
+  private fileNameRegex: RegExp[];
 
   private contentRegex: { pattern: RegExp; type: string }[] = [
     { pattern: /sk-ant-api\d{2}-[a-zA-Z0-9_-]{16,}/g, type: "Anthropic API Key" },
@@ -20,55 +21,95 @@ export class ScannerService {
     { pattern: /[a-z0-9]{32}-us[0-9]{1,2}/g, type: "Mailchimp API Key" },
     { pattern: /xox[baprs]-[0-9a-zA-Z]{10,}/g, type: "Slack Token" },
     { pattern: /AIza[0-9A-Za-z\-_]{35}/g, type: "Google API Key" },
-    { pattern: /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g, type: "JWT Token" },
+    {
+      pattern: /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g,
+      type: "JWT Token",
+    },
     { pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g, type: "Private Key" },
   ];
 
+  constructor(private config: BantayConfig) {
+    this.fileNameRegex = (this.config.scan.sensitiveFiles || []).map((glob) => {
+      // Simple glob to regex conversion: *.pem -> /\.pem$/, id_rsa -> /id_rsa$/
+      const pattern = glob
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&") // escape regex chars (dot, plus, etc.)
+        .replace(/\*/g, ".*"); // * -> .*
+      return new RegExp(`${pattern}$`);
+    });
+  }
+
   /**
-   * Scans a git diff for secrets using secretlint and filename regex
+   * Fetches repository visibility metadata via GitHub API
    */
-  async scanDiff(diff: string): Promise<Finding[]> {
+  async getRepoMetadata(remoteUrl: string): Promise<{ repoVisibility: "public" | "private" }> {
+    const userId = process.env.BANTAY_AUTH0_USER_ID;
+    if (!userId) {
+      console.error("[Scanner] Warning: BANTAY_AUTH0_USER_ID not set. Defaulting to public.");
+      return { repoVisibility: "public" };
+    }
+
+    try {
+      const match = remoteUrl.match(
+        /(?:git@github\.com:|https:\/\/github\.com\/)([^\/]+)\/([^\/\.]+)(?:\.git)?/
+      );
+      if (!match) {
+        throw new Error(`Could not parse GitHub owner/repo from ${remoteUrl}`);
+      }
+      const [, owner, repo] = match;
+
+      const token = await getGithubToken(userId);
+      const visibility = await getRepoVisibility(owner, repo, token);
+
+      return { repoVisibility: visibility };
+    } catch (error: any) {
+      console.warn(
+        `[Scanner] Warning: GitHub visibility check failed. Defaulting to public. Error: ${error.message}`
+      );
+      return { repoVisibility: "public" };
+    }
+  }
+
+  /**
+   * Scans a git diff for secrets
+   */
+  async scanDiff(diff: string, repoVisibility: "public" | "private"): Promise<Finding[]> {
     const findings: Finding[] = [];
-    console.log("[Scanner] Parsing diff...");
     const files = this.parseDiff(diff);
-    console.log(`[Scanner] Found ${files.length} files in diff.`);
 
     for (const file of files) {
+      const basename = path.basename(file.path);
+
       // 1. Filename based check
-      if (this.isSensitiveFile(file.path)) {
-        console.log(`[Scanner] Sensitive filename hit: ${file.path}`);
+      if (this.fileNameRegex.some((regex) => regex.test(basename))) {
+        let riskTier: "high" | "medium" | "low" = "high";
+
+        // Visibility-aware risk tier for .map files
+        if (basename.endsWith(".map")) {
+          riskTier =
+            repoVisibility === "public"
+              ? this.config.scan.sourceMaps.publicRepo
+              : this.config.scan.sourceMaps.privateRepo;
+        }
+
         findings.push({
           file: file.path,
           line_number: 1,
           type: "Sensitive Filename",
           value: file.path,
+          riskTier,
         });
       }
 
       // 2. Content based check using secretlint
       try {
-        console.log(`[Scanner] Linting content of ${file.path} (${file.content.length} chars)`);
         const result = await lintSource({
-          source: {
-            content: file.content,
-            filePath: file.path,
-            contentType: "text",
-          },
+          source: { content: file.content, filePath: file.path, contentType: "text" },
           options: {
             config: {
-              rules: [
-                {
-                  id: "recommend",
-                  rule: recommendPreset,
-                },
-              ],
+              rules: [{ id: "recommend", rule: recommendPreset }],
             },
           },
         });
-
-        if (result.messages.length > 0) {
-          console.log(`[Scanner] Found ${result.messages.length} secrets in ${file.path}`);
-        }
 
         for (const message of result.messages) {
           findings.push({
@@ -76,24 +117,27 @@ export class ScannerService {
             line_number: message.loc.start.line,
             type: message.messageId || "Secret Detection",
             value: message.message,
+            riskTier: "high", // Content secrets are always high risk
           });
         }
       } catch (error) {
-        console.error(`[Scanner] Error linting ${file.path}: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `[Scanner] Error linting ${file.path}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
 
-      // 3. Content regex layer for patterns Secretlint misses
-      const lines = file.content.split("\n");
-      lines.forEach((lineContent, lineIndex) => {
+      // 3. Content regex layer
+      file.content.split("\n").forEach((lineContent, lineIndex) => {
         for (const { pattern, type } of this.contentRegex) {
-          pattern.lastIndex = 0; // reset regex state
+          pattern.lastIndex = 0;
           const match = pattern.exec(lineContent);
           if (match) {
             findings.push({
               file: file.path,
               line_number: lineIndex + 1,
               type,
-              value: match[0].substring(0, 8) + "***", // mask the value
+              value: match[0].substring(0, 8) + "***",
+              riskTier: "high",
             });
           }
         }

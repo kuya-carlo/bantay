@@ -5,6 +5,7 @@ export type Finding = {
   line_number: number;
   type: string;
   value: string;
+  riskTier?: "high" | "medium" | "low";
 };
 
 /**

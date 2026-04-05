@@ -3,11 +3,25 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { createInterface } from "node:readline";
+import { loadSecrets } from "../../../core/src/services/secrets";
 
 /**
  * Executes the bantay init command
  */
 export async function initCommand() {
+  // 0. Login Check
+  try {
+    const secrets = await loadSecrets();
+    if (!process.env.BANTAY_AUTH0_CLIENT_SECRET && !secrets.BANTAY_AUTH0_CLIENT_SECRET) {
+      throw new Error();
+    }
+  } catch (e) {
+    if (!process.env.BANTAY_AUTH0_CLIENT_SECRET) {
+      console.error(chalk.red("❌ Not logged in. Run 'bantay login' first."));
+      process.exit(1);
+    }
+  }
+
   const projectRoot = process.cwd();
   const gitDir = path.join(projectRoot, ".git");
 
@@ -15,7 +29,11 @@ export async function initCommand() {
   try {
     await fs.access(gitDir);
   } catch (e) {
-    console.error(chalk.red("Error: .git directory not found. Please run this command from the root of a git repository."));
+    console.error(
+      chalk.red(
+        "Error: .git directory not found. Please run this command from the root of a git repository."
+      )
+    );
     process.exit(1);
   }
 
@@ -28,20 +46,31 @@ export async function initCommand() {
     console.log(chalk.dim("- .bantay.yaml already exists. Skipping."));
   } catch (e) {
     const defaultConfig = `# Bantay Configuration
-# Copy .env.example to .env and fill in secrets before running bantay init
+# Repo-level policy overrides global defaults in ~/.bantay/config
 
 ntfy:
-  topic: "hackathon-test"
-  # url and auth are loaded from NTFY_URL, NTFY_USERNAME, NTFY_PASSWORD env vars
+  topic: "bantay-repolog"
+  # url and auth are loaded from BANTAY_NTFY_URL, BANTAY_NTFY_USERNAME etc.
 
-auth0:
-  # domain and clientId are loaded from AUTH0_DOMAIN, AUTH0_CLIENT_ID env vars
+scan:
+  sensitiveFiles:
+    - "*.pem"
+    - "*.key"
+    - ".env"
+    - "id_rsa"
+    - "*.pfx"
+    - "*.map"
+  sourceMaps:
+    publicRepo: "high"
+    privateRepo: "medium"
+  blockOnTimeout: true
+  cibaTimeoutSeconds: 60
 
 git:
   protectedBranches: ["main", "master", "prod"]
 
 thresholds:
-  highRiskLineCount: 1000  # PRD spec: chungus commit threshold
+  highRiskLineCount: 1000
 `;
     await fs.writeFile(configPath, defaultConfig);
     console.log(chalk.green("✅ Created default .bantay.yaml"));
@@ -79,11 +108,14 @@ exit 0
     } else {
       // Third-party hook exists - ask user
       const rl = createInterface({ input: process.stdin, output: process.stdout });
+      process.stdin.resume();
+
       const answer = await new Promise<string>((resolve) => {
-        rl.question(
-          chalk.yellow("⚠️  A pre-push hook already exists. [o]verwrite, [m]erge (append Bantay), or [s]kip? "),
-          resolve
+        const question = chalk.yellow(
+          "⚠️  A pre-push hook already exists. [o]verwrite, [m]erge (append Bantay), or [s]kip? "
         );
+        process.stderr.write(question);
+        rl.question("", resolve);
       });
       rl.close();
 
@@ -106,7 +138,9 @@ exit 0
     await fs.chmod(prePushPath, "755"); // Make executable
     console.log(chalk.green("✅ Installed pre-push hook at .git/hooks/pre-push"));
   } catch (error) {
-    console.error(chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : String(error)}`));
+    console.error(
+      chalk.red(`Failed to install hook: ${error instanceof Error ? error.message : String(error)}`)
+    );
     process.exit(1);
   }
 

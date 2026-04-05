@@ -3,6 +3,7 @@ import "dotenv/config";
 import { Command } from "commander";
 import { scanCommand } from "./commands/scan";
 import { initCommand } from "./commands/init";
+import { loginCommand } from "./commands/login";
 
 const program = new Command();
 
@@ -13,10 +14,12 @@ program
 
 program
   .command("scan")
-  .description("Scan staged changes for secrets and assess risk")
-  .action(async () => {
+  .description("Scan for secrets and assess risk")
+  .option("--staged", "Scan only staged changes")
+  .option("--ci", "Scan full branch diff against origin/main (for CI environments)")
+  .action(async (options) => {
     try {
-      await scanCommand();
+      await scanCommand(options);
     } catch (error) {
       console.error(error);
       process.exit(1);
@@ -29,6 +32,19 @@ program
   .action(async () => {
     try {
       await initCommand();
+    } catch (error) {
+      console.error(error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("login")
+  .description("Authenticate with Auth0 via GitHub")
+  .option("--tenant <name>", "Specify tenant name for authentication", "default")
+  .action(async (options) => {
+    try {
+      await loginCommand(options);
     } catch (error) {
       console.error(error);
       process.exit(1);
