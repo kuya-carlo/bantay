@@ -1,0 +1,8 @@
+- id: bantay
+  name: Bantay Security Scan
+  description: Scans staged changes for secrets using AI-powered risk assessment with Auth0 CIBA
+  entry: node packages/cli/dist/index.js scan
+  language: node
+  pass_filenames: false
+  stages: [pre-push]
+  always_run: true

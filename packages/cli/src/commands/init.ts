@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import { execSync } from "node:child_process";
+import { createInterface } from "node:readline";
 
 /**
  * Executes the bantay init command
@@ -18,7 +19,7 @@ export async function initCommand() {
     process.exit(1);
   }
 
-  console.log(chalk.blue("🛡️  Initalizing Bantay..."));
+  console.log(chalk.blue("🛡️  Initializing Bantay..."));
 
   // 2. Create default .bantay.yaml if not exists
   const configPath = path.join(projectRoot, ".bantay.yaml");
@@ -58,7 +59,7 @@ echo "🛡️  Bantay: Checking for secrets before push..."
 
 # Run the scan command using the relative path from repo root
 REPO_ROOT=$(git rev-parse --show-toplevel)
-node "$REPO_ROOT/packages/cli/dist/index.ts" scan
+node "$REPO_ROOT/packages/cli/dist/index.js" scan
 
 EXIT_CODE=$?
 
@@ -69,6 +70,36 @@ fi
 
 exit 0
 `;
+
+  // Check if hook already exists
+  if (existsSync(prePushPath)) {
+    const existing = readFileSync(prePushPath, "utf8");
+    if (existing.includes("Bantay")) {
+      console.log(chalk.dim("- Bantay hook already installed. Overwriting with latest version."));
+    } else {
+      // Third-party hook exists - ask user
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(
+          chalk.yellow("⚠️  A pre-push hook already exists. [o]verwrite, [m]erge (append Bantay), or [s]kip? "),
+          resolve
+        );
+      });
+      rl.close();
+
+      if (answer.toLowerCase() === "s") {
+        console.log(chalk.yellow("⏭️  Skipping hook installation."));
+      } else if (answer.toLowerCase() === "m") {
+        // Append bantay call to existing hook
+        const mergeContent = `\n\n# Bantay Security Scan\nREPO_ROOT=$(git rev-parse --show-toplevel)\nnode "$REPO_ROOT/packages/cli/dist/index.js" scan || exit 1\n`;
+        await fs.appendFile(prePushPath, mergeContent);
+        console.log(chalk.green("✅ Bantay appended to existing pre-push hook."));
+        console.log(chalk.bold.green("\n🎉 Bantay is now active! Your pushes are protected.\n"));
+        return;
+      }
+      // else overwrite - fall through
+    }
+  }
 
   try {
     await fs.writeFile(prePushPath, hookContent);

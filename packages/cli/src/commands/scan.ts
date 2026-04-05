@@ -3,7 +3,7 @@ import axios from 'axios';
 // @ts-ignore
 import { buildGraph } from "@bantay/core";
 // @ts-ignore
-import { Auth0Service, NotificationService, ConfigService } from "@bantay/core";
+import { NotificationService, ConfigService } from "@bantay/core";
 import { formatAssessment, formatFindings, formatInterrupt } from "../formatters";
 import chalk from "chalk";
 
@@ -28,13 +28,7 @@ export async function scanCommand() {
 
   const notificationService = new NotificationService();
 
-  const auth0 = new Auth0Service({
-    domain: process.env.AUTH0_DOMAIN!,
-    clientId: process.env.AUTH0_CLIENT_ID!,
-    clientSecret: process.env.AUTH0_CLIENT_SECRET!,
-    notificationService,
-    ntfyTopic: config.ntfy.topic,
-  });
+
 
   // 1. Get staged changes
   let diff = "";

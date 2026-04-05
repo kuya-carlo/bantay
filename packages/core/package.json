@@ -16,10 +16,6 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "@auth0/ai": "^6.0.0",
-    "@auth0/ai-langchain": "5.0.0",
-    "@langchain/core": "0.3.80",
-    "@langchain/openai": "^0.3.0",
     "@secretlint/core": "^11.5.0",
     "@secretlint/node": "^11.4.1",
     "@secretlint/secretlint-rule-preset-recommend": "^11.4.1",

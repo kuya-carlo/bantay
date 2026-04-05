@@ -5,7 +5,7 @@ export default defineConfig({
   format: ['cjs'],
   dts: true,
   outDir: 'dist',
-  noExternal: ['@auth0/ai', '@auth0/ai-langchain', '@openfga/sdk'],
+  noExternal: ['@openfga/sdk'],
   external: ['axios'],
   sourcemap: true,
   clean: true,

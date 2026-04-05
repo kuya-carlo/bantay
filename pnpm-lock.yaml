@@ -56,18 +56,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@auth0/ai':
-        specifier: ^6.0.0
-        version: 6.0.0
-      '@auth0/ai-langchain':
-        specifier: 5.0.0
-        version: 5.0.0(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@4.104.0(zod@3.25.76)))(@langchain/langgraph-sdk@0.1.10(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@4.104.0(zod@3.25.76))))(@langchain/langgraph@0.4.9(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@4.104.0(zod@3.25.76)))(zod-to-json-schema@3.25.0(zod@3.25.76)))(@openfga/sdk@0.8.1)(@opentelemetry/api@1.9.1)(axios@1.14.0)(openai@4.104.0(zod@3.25.76))(zod@3.25.76)
-      '@langchain/core':
-        specifier: 0.3.80
-        version: 0.3.80(@opentelemetry/api@1.9.1)(openai@4.104.0(zod@3.25.76))
-      '@langchain/openai':
-        specifier: ^0.3.0
-        version: 0.3.17(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@4.104.0(zod@3.25.76)))
       '@secretlint/core':
         specifier: ^11.5.0
         version: 11.5.0
