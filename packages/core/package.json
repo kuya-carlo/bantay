@@ -2,18 +2,23 @@
   "name": "@bantay/core",
   "version": "0.1.0",
   "private": true,
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format cjs --dts --out-dir dist",
     "test": "vitest run",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
+    "@auth0/ai": "^6.0.0",
     "@auth0/ai-langchain": "5.0.0",
     "@langchain/core": "0.3.80",
-    "@langchain/langgraph": "0.4.9",
-    "@langchain/langgraph-checkpoint": "0.1.1",
     "@langchain/openai": "^0.3.0",
     "@secretlint/core": "^11.5.0",
     "@secretlint/node": "^11.4.1",

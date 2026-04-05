@@ -49,5 +49,5 @@ export function formatFindings(findings: any[]) {
 export function formatInterrupt() {
   return chalk.bold.yellow("\n⏸️  Push Interrupted! Human Authorization Required.\n") +
          "A notification has been sent to your primary device.\n" +
-         chalk.dim("Polling for approval... (Timeout: 30s)\n");
+         chalk.dim("Polling for approval... (Timeout: 60s)\n");
 }

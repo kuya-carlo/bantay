@@ -6,13 +6,21 @@
     "bantay": "./bin/bantay"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format cjs --dts --out-dir dist",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
+    "@auth0/ai-langchain": "5.0.0",
     "@bantay/core": "workspace:*",
+    "axios": "^1.6.0",
     "chalk": "^4.1.0",
     "commander": "^11.0.0",
     "dotenv": "^16.6.1"
+  },
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   }
 }

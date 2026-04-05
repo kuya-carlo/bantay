@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Security-First, Library-First CLI with LangGraph and Auth0 CIBA",
+  "type": "module",
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
@@ -13,6 +14,8 @@
     "@types/node": "^20.0.0",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   },
   "engines": {
@@ -21,6 +24,9 @@
   "pnpm": {
     "overrides": {
       "@auth0/ai-langchain": "5.0.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

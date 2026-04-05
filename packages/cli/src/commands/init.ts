@@ -58,7 +58,7 @@ echo "🛡️  Bantay: Checking for secrets before push..."
 
 # Run the scan command using the relative path from repo root
 REPO_ROOT=$(git rev-parse --show-toplevel)
-node "$REPO_ROOT/packages/cli/dist/index.js" scan
+node "$REPO_ROOT/packages/cli/dist/index.ts" scan
 
 EXIT_CODE=$?
 

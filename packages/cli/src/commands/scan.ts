@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import axios from 'axios';
 // @ts-ignore
 import { buildGraph } from "@bantay/core";
 // @ts-ignore
@@ -15,19 +16,22 @@ export async function scanCommand() {
     process.exit(0);
   }
 
+  const missingVars = ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'VULTR_API_KEY', 'AUTH0_USER_ID']
+    .filter(v => !process.env[v]);
+
+  if (missingVars.length > 0) {
+    console.warn(chalk.yellow(`⚠️  Missing env vars: ${missingVars.join(', ')}. Some features may not work.`));
+  }
+
   const configService = new ConfigService();
   const config = await configService.load(process.cwd());
 
-  const notificationService = new NotificationService({
-    baseURL: "https://ntfy.kuyacarlo.dev",
-    user: "karlo",
-    pass: process.env.NTFY_PASSWORD || "",
-  });
+  const notificationService = new NotificationService();
 
   const auth0 = new Auth0Service({
-    domain: process.env.AUTH0_DOMAIN || "kuyacarlo.jp.auth0.com",
-    clientId: process.env.AUTH0_CLIENT_ID || "",
-    clientSecret: process.env.AUTH0_CLIENT_SECRET || "",
+    domain: process.env.AUTH0_DOMAIN!,
+    clientId: process.env.AUTH0_CLIENT_ID!,
+    clientSecret: process.env.AUTH0_CLIENT_SECRET!,
     notificationService,
     ntfyTopic: config.ntfy.topic,
   });
@@ -47,12 +51,10 @@ export async function scanCommand() {
 
   // 2. Initialize and run graph
   console.log(chalk.blue("🛡️  Bantay: Scanning staged changes..."));
-  const graph = buildGraph();
-  const threadID = `push-${Date.now()}`;
-  const runConfig = { configurable: { thread_id: threadID } };
+  const graph = await buildGraph();
 
   try {
-    const result = await graph.invoke({ diff, approved: null }, runConfig);
+    const result = await graph.invoke({ diff, approved: null });
     
     // Check for findings and assessment
     if (result.findings && result.findings.length > 0) {
@@ -74,34 +76,86 @@ export async function scanCommand() {
        // MEDIUM risk: Graph is interrupted
        console.log(formatInterrupt());
        
-       // In a real CLI hook, we might block or poll.
-       // The GraphResumer would normally handle this, but for the pre-push hook,
-       // we might want to wait synchronously or instruct the user to check their device.
+       // Send ntfy notification directly - don't rely on SDK callback
+       try {
+         await notificationService.sendAlert(
+           config.ntfy.topic,
+           `🛡️ Bantay detected secrets requiring approval.\n\nFindings: ${result.findings?.map((f: any) => `${f.type} in ${f.file}`).join(', ')}\n\nApprove or deny this push from your ntfy client.`
+         );
+         console.log(chalk.dim("📱 Notification sent to your device."));
+       } catch (e) {
+         console.warn(chalk.yellow("⚠️  Could not send ntfy notification."));
+       }
        
-       // For MVP, we'll try to resume briefly or fail-closed if no response.
-       console.log(chalk.dim("Waiting for authorization..."));
-       
-       // We'll give it a 30s timeout
-       let finalApproved = null;
-       const startTime = Date.now();
-       
-       while (Date.now() - startTime < 30000) {
-          await new Promise(r => setTimeout(r, 2000));
-          const state = await graph.getState(runConfig);
-          if (state.values.approved !== null) {
-              finalApproved = state.values.approved;
-              break;
-          }
+       // Direct CIBA polling
+       const loginHint = JSON.stringify({
+         format: "iss_sub",
+         iss: `https://${process.env.AUTH0_DOMAIN}/`,
+         sub: process.env.AUTH0_USER_ID
+       });
+
+       let authReqId: string;
+       try {
+         const cibaRes = await axios.post(
+           `https://${process.env.AUTH0_DOMAIN}/bc-authorize`,
+           new URLSearchParams({
+             client_id: process.env.AUTH0_CLIENT_ID!,
+             client_secret: process.env.AUTH0_CLIENT_SECRET!,
+             binding_message: `Bantay: ${result.findings?.length} secrets detected. Authorize this push.`,
+             login_hint: loginHint,
+             scope: 'openid',
+           }),
+           { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+         );
+         authReqId = cibaRes.data.auth_req_id;
+         console.log(chalk.dim('🔐 Auth0 CIBA initiated. Waiting for approval on your Guardian app...'));
+       } catch (e: any) {
+         console.error(chalk.red(`❌ CIBA initiation failed: ${e.response?.data?.error_description || e.message}`));
+         process.exit(1);
        }
 
-       if (finalApproved === true) {
-          console.log(chalk.green("✅ Authorization received. Push allowed."));
-          process.exit(0);
-       } else {
-          console.log(chalk.red("❌ Authorization denied or timed out. Push blocked."));
-          process.exit(1);
+       const startTime = Date.now();
+       const timeout = 60000;
+       const interval = 5000;
+
+       while (Date.now() - startTime < timeout) {
+         await new Promise(r => setTimeout(r, interval));
+         try {
+           const tokenRes = await axios.post(
+             `https://${process.env.AUTH0_DOMAIN}/oauth/token`,
+             new URLSearchParams({
+               client_id: process.env.AUTH0_CLIENT_ID!,
+               client_secret: process.env.AUTH0_CLIENT_SECRET!,
+               grant_type: 'urn:openid:params:grant-type:ciba',
+               auth_req_id: authReqId,
+             }),
+             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+           );
+           if (tokenRes.data.access_token) {
+             console.log(chalk.green('✅ Authorization approved. Push allowed.'));
+             process.exit(0);
+           }
+         } catch (e: any) {
+           const errCode = e.response?.data?.error;
+           if (errCode === 'authorization_pending') {
+             console.log(chalk.dim('⏳ Waiting for Guardian approval...'));
+             continue;
+           } else if (errCode === 'access_denied') {
+             console.log(chalk.red('❌ Authorization denied. Push blocked.'));
+             process.exit(1);
+           } else if (errCode === 'expired_token') {
+             console.log(chalk.red('❌ Authorization request expired. Push blocked.'));
+             process.exit(1);
+           } else {
+             console.error(chalk.red(`❌ CIBA polling error: ${e.response?.data?.error_description || e.message}`));
+             process.exit(1);
+           }
+         }
        }
-    }
+
+       console.log(chalk.red('❌ Authorization timed out. Push blocked.'));
+       process.exit(1);
+     }
   } catch (error) {
     console.error(chalk.red(`\n🚨 Error during scan: ${error instanceof Error ? error.message : String(error)}`));
     // Fail-Closed

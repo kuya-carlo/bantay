@@ -111,3 +111,5 @@ Thumbs.db
 specs/
 walkthrough.md
 tsconfig.json.bak
+# LangGraph API
+.langgraph_api

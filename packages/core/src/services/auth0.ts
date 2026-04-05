@@ -20,6 +20,7 @@ export class Auth0Service {
   }) {
     this.notificationService = config.notificationService;
     this.ntfyTopic = config.ntfyTopic;
+
     this.auth0AI = new Auth0AI({
       auth0: {
         domain: config.domain,
@@ -27,25 +28,51 @@ export class Auth0Service {
         clientSecret: config.clientSecret,
       },
     });
+
   }
 
   /**
    * Authorizer for asynchronous user confirmation (CIBA)
    */
+
+  // packages/core/src/services/auth0.ts
+
   get asyncConfirmation() {
-    return this.auth0AI.withAsyncAuthorization({
-      // @ts-ignore
-      userID: (_params: any, config: any) => config.configurable?.user_id || "default_user",
-      bindingMessage: "Bantay: A medium-risk push attempt was detected. Do you authorize this action?",
-      scopes: ["openid"],
-      onAuthorizationInterrupt: async (interrupt: any, context: any) => {
-         if (this.notificationService && this.ntfyTopic) {
-             const threadID = (context as any).configurable?.thread_id;
-             const message = `🛡️ Push Interrupted! Guardian detected a MEDIUM risk secret.\nApproval requested for thread: ${threadID || 'unknown'}`;
-             await this.notificationService.sendAlert(this.ntfyTopic, message);
-         }
+    const userId = process.env.AUTH0_USER_ID || "github|106532351";
+
+    // Wrap the authorizer to force the correct CIBA start
+    return async (params: any) => {
+      // 1. Manually trigger the CIBA request to force the "Email" channel
+      const response = await fetch(`https://${process.env.AUTH0_DOMAIN}/bc-authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+
+        body: new URLSearchParams({
+          client_id: process.env.AUTH0_CLIENT_ID!,
+          client_secret: process.env.AUTH0_CLIENT_SECRET!,
+          login_hint: JSON.stringify({
+            format: "iss_sub",
+            iss: `https://${process.env.AUTH0_DOMAIN}/`,
+            sub: userId
+          }),
+          binding_message: "Bantay: High-risk push detected. Authorize?",
+          scope: "openid",
+          requested_expiry: "600" // <--- ADD THIS to force Email fallback
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Auth0 CIBA Error: ${error.error_description || error.error}`);
       }
-    });
+
+      // 2. Now let the SDK handle the polling/resume logic
+      return this.auth0AI.withAsyncAuthorization({
+        userID: () => userId,
+        bindingMessage: "Bantay: Authorize?",
+        scopes: ["openid"],
+      })(params);
+    };
   }
 
   /**
@@ -78,17 +105,10 @@ export class Auth0Service {
     );
 
     return this.auth0AI.withAsyncAuthorization({
-       // @ts-ignore
-       userID: (_params: any, config: any) => config.configurable?.user_id || "default_user",
-       bindingMessage: "Bantay: A medium-risk push attempt was detected. Do you authorize this action?",
-       scopes: ["openid"],
-       onAuthorizationInterrupt: async (interrupt: any, context: any) => {
-          if (this.notificationService && this.ntfyTopic) {
-              const threadID = (context as any).configurable?.thread_id;
-              const message = `🛡️ Push Interrupted! Guardian detected a MEDIUM risk secret.\nApproval requested for thread: ${threadID || 'unknown'}`;
-              await this.notificationService.sendAlert(this.ntfyTopic, message);
-          }
-       }
+      // @ts-ignore
+      userID: () => process.env.AUTH0_USER_ID || "default_user",
+      bindingMessage: "Bantay: A medium-risk push attempt was detected. Do you authorize this action?",
+      scopes: ["openid"],
     }, rawTool);
   }
 }

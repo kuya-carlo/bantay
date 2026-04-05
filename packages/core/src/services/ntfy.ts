@@ -5,11 +5,22 @@ import axios from "axios";
  */
 export class NotificationService {
   private baseURL: string;
-  private auth: string;
+  private auth: string | null;
 
-  constructor(config: { baseURL: string, user: string, pass: string }) {
-    this.baseURL = config.baseURL || "https://ntfy.kuyacarlo.dev";
-    this.auth = Buffer.from(`${config.user}:${config.pass}`).toString("base64");
+  constructor(config?: { baseURL?: string, user?: string, pass?: string }) {
+    this.baseURL = config?.baseURL
+      || process.env.NTFY_URL
+      || "https://ntfy.sh";
+
+    const user = config?.user || process.env.NTFY_USERNAME;
+    const pass = config?.pass || process.env.NTFY_PASSWORD;
+
+    if (!user || !pass) {
+      console.warn("[ntfy] Warning: No authentication configured. Publishing without auth — topic must be public.");
+      this.auth = null;
+    } else {
+      this.auth = Buffer.from(`${user}:${pass}`).toString("base64");
+    }
   }
 
   /**
@@ -20,20 +31,23 @@ export class NotificationService {
    */
   async sendAlert(topic: string, message: string, actions?: any[]) {
     const url = `${this.baseURL}/${topic}`;
-    
+
     const headers: Record<string, string> = {
-      "Authorization": `Basic ${this.auth}`,
-      "Title": "🛡️ Bantay Security Alert",
+      "Title": "Bantay Security Alert",
+      "Tags": "warning,shield,rotating_light",
       "Priority": "4", // High
-      "Tags": "warning,shield",
     };
 
+    if (this.auth) {
+      headers["Authorization"] = `Basic ${this.auth}`;
+    }
+
     if (actions && actions.length > 0) {
-       // ntfy Action buttons format: "view, label, url; view, label, url"
-       // We use 'view' for simple URLs or 'http' for POSTs (Auth0 CIBA usually requires POST)
-       // Let's use 'view' for the dashboard/approval link for MVP
-       const ntfyActions = actions.map(a => `${a.type || 'view'}, ${a.label}, ${a.url}`).join("; ");
-       headers["Actions"] = ntfyActions;
+      // ntfy Action buttons format: "view, label, url; view, label, url"
+      // We use 'view' for simple URLs or 'http' for POSTs (Auth0 CIBA usually requires POST)
+      // Let's use 'view' for the dashboard/approval link for MVP
+      const ntfyActions = actions.map(a => `${a.type || 'view'}, ${a.label}, ${a.url}`).join("; ");
+      headers["Actions"] = ntfyActions;
     }
 
     try {
@@ -44,4 +58,25 @@ export class NotificationService {
       throw error;
     }
   }
+
+  /**
+   * Verifies connectivity to the ntfy server
+   * @param topic Optional topic to verify access to
+   */
+  // async checkConnection(topic?: string) {
+  //   const url = topic ? `${this.baseURL}/${topic}` : this.baseURL;
+  //   const headers: Record<string, string> = {};
+  //   if (this.auth) {
+  //     headers["Authorization"] = `Basic ${this.auth}`;
+  //   }
+
+  //   try {
+  //     // Use a short timeout for the connectivity check
+  //     await axios.get(url, { headers, timeout: 5000, validateStatus: (status) => status < 400 });
+  //     console.log(`[ntfy] Connection verified: ${url}`);
+  //   } catch (error) {
+  //     console.error(`[ntfy] Connection check failed for ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  //     throw new Error(`ntfy server unreachable or authentication failed at ${url}`);
+  //   }
+  // }
 }

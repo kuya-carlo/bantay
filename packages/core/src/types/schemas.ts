@@ -5,7 +5,7 @@ import { z } from "zod";
  */
 export interface Finding {
   file: string;
-  line: number;
+  line_number: number;
   type: string;
   value: string;
 }
@@ -61,7 +61,7 @@ export type MetadataEnvelope = z.infer<typeof MetadataEnvelopeSchema>;
  * Schema for the LLM risk assessment output
  */
 export const RiskAssessmentSchema = z.object({
-  riskTier: z.enum(["low", "medium", "high"]),
+  tier: z.enum(["low", "medium", "high"]),
   reason: z.string(),
   suggestion: z.string(),
 });

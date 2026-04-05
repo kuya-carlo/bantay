@@ -1,8 +1,2 @@
 #!/usr/bin/env node
-import { register } from "node:module";
-import { pathToFileURL } from "node:url";
-
-// For development, we use ts-node/esm or tsx if available.
-// In this environment, we'll try to use the compiled JS if it exists, 
-// or use ts-node to run the TS directly.
-import "../src/index.js";
+require('../dist/index.js');

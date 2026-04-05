@@ -1,9 +1,8 @@
 {
-  "extends": "../../tsconfig.options.json",
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "./dist"
+    "strict": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
   }
 }
