@@ -7,16 +7,16 @@ export class NotificationService {
   private baseURL: string;
   private auth: string | null;
 
-  constructor(config?: { baseURL?: string, user?: string, pass?: string }) {
-    this.baseURL = config?.baseURL
-      || process.env.NTFY_URL
-      || "https://ntfy.sh";
+  constructor(config?: { baseURL?: string; user?: string; pass?: string }) {
+    this.baseURL = config?.baseURL || process.env.BANTAY_NTFY_URL || "https://ntfy.sh";
 
-    const user = config?.user || process.env.NTFY_USERNAME;
-    const pass = config?.pass || process.env.NTFY_PASSWORD;
+    const user = config?.user || process.env.BANTAY_NTFY_USERNAME;
+    const pass = config?.pass || process.env.BANTAY_NTFY_PASSWORD;
 
     if (!user || !pass) {
-      console.warn("[ntfy] Warning: No authentication configured. Publishing without auth — topic must be public.");
+      console.warn(
+        "[ntfy] Warning: No authentication configured. Publishing without auth — topic must be public."
+      );
       this.auth = null;
     } else {
       this.auth = Buffer.from(`${user}:${pass}`).toString("base64");
@@ -33,9 +33,9 @@ export class NotificationService {
     const url = `${this.baseURL}/${topic}`;
 
     const headers: Record<string, string> = {
-      "Title": "Bantay Security Alert",
-      "Tags": "warning,shield,rotating_light",
-      "Priority": "4", // High
+      Title: "Bantay Security Alert",
+      Tags: "warning,shield,rotating_light",
+      Priority: "4", // High
     };
 
     if (this.auth) {
@@ -46,7 +46,9 @@ export class NotificationService {
       // ntfy Action buttons format: "view, label, url; view, label, url"
       // We use 'view' for simple URLs or 'http' for POSTs (Auth0 CIBA usually requires POST)
       // Let's use 'view' for the dashboard/approval link for MVP
-      const ntfyActions = actions.map(a => `${a.type || 'view'}, ${a.label}, ${a.url}`).join("; ");
+      const ntfyActions = actions
+        .map((a) => `${a.type || "view"}, ${a.label}, ${a.url}`)
+        .join("; ");
       headers["Actions"] = ntfyActions;
     }
 
@@ -54,8 +56,9 @@ export class NotificationService {
       await axios.post(url, message, { headers });
       console.log(`[ntfy] Alert sent to topic: ${topic}`);
     } catch (error) {
-      console.error(`[ntfy] Failed to send alert: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
+      console.error(
+        `[ntfy] Failed to send alert: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

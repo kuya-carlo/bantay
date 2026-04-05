@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: bantay-lint
+        name: ESLint
+        language: system
+        entry: pnpm -r lint --if-present
+        pass_filenames: false
+
+      - id: bantay-format
+        name: Prettier
+        language: system
+        entry: pnpm -r format:check --if-present
+        pass_filenames: false
+
+      - id: bantay-typecheck
+        name: TypeScript typecheck
+        language: system
+        entry: pnpm -r typecheck --if-present
+        pass_filenames: false
+
+      - id: bantay-test
+        name: Unit tests
+        language: system
+        entry: pnpm --filter core test
+        pass_filenames: false

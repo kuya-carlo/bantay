@@ -181,9 +181,4 @@ export class ScannerService {
 
     return files;
   }
-
-  private isSensitiveFile(filePath: string): boolean {
-    const basename = path.basename(filePath);
-    return this.fileNameRegex.some((regex) => regex.test(basename));
-  }
 }

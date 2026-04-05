@@ -11,6 +11,10 @@ vi.mock("../src/services/github", () => ({
   getRepoVisibility: vi.fn().mockResolvedValue("private"),
 }));
 
+vi.mock("@secretlint/core", () => ({
+  lintSource: vi.fn().mockResolvedValue({ messages: [] }),
+}));
+
 describe("ScannerService", () => {
   let config: BantayConfig;
   let scanner: ScannerService;
@@ -62,5 +66,99 @@ describe("ScannerService", () => {
 
     expect(findings.some((f) => f.type === "Anthropic API Key")).toBe(true);
     expect(findings.find((f) => f.type === "Anthropic API Key")?.riskTier).toBe("high");
+  });
+
+  it("should return empty findings for an empty diff", async () => {
+    const findings = await scanner.scanDiff("", "public");
+    expect(findings).toEqual([]);
+  });
+
+  it("should return empty findings for a diff with only deletions", async () => {
+    const diff = `diff --git a/index.js b/index.js\n--- a/index.js\n+++ b/index.js\n@@ -1 +0,0 @@\n-const key = "ghp_123456789012345678901234567890123456";`;
+    const findings = await scanner.scanDiff(diff, "public");
+    expect(findings).toEqual([]);
+  });
+
+  it("should process a chungus commit (>1000 lines) without throwing", async () => {
+    const lines = Array.from({ length: 1100 }, (_, i) => `+line ${i}`).join("\n");
+    const diff = `diff --git a/large.txt b/large.txt\n--- /dev/null\n+++ b/large.txt\n@@ -0,0 +1,1100 @@\n${lines}`;
+    const findings = await scanner.scanDiff(diff, "public");
+    expect(findings).toBeDefined();
+  });
+
+  it("should return separate findings for sensitive filename AND secret content", async () => {
+    const diff = `diff --git a/key.pem b/key.pem\n--- /dev/null\n+++ b/key.pem\n@@ -0,0 +1 @@\n+const key = "ghp_123456789012345678901234567890123456";`;
+    const findings = await scanner.scanDiff(diff, "public");
+
+    expect(findings.filter((f) => f.type === "Sensitive Filename")).toHaveLength(1);
+    expect(findings.filter((f) => f.type === "GitHub Personal Access Token")).toHaveLength(1);
+  });
+
+  it("should catch Secretlint errors and continue scanning", async () => {
+    const { lintSource } = await import("@secretlint/core");
+    vi.mocked(lintSource).mockRejectedValueOnce(new Error("Lint Crash"));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const diff = `diff --git a/a.js b/a.js\n+++ b/a.js\n+ghp_123456789012345678901234567890123456\ndiff --git b/b.js b/b.js\n+++ b/b.js\n+ghp_123456789012345678901234567890123456`;
+    const findings = await scanner.scanDiff(diff, "public");
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Error linting a.js: Lint Crash")
+    );
+    // Should still find the secret in b.js (via regex layer even if linter failed)
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it("should process messages returned from Secretlint", async () => {
+    const { lintSource } = await import("@secretlint/core");
+    vi.mocked(lintSource).mockResolvedValueOnce({
+      filePath: "test.txt",
+      sourceContent: "secret_data",
+      sourceContentType: "text",
+      messages: [
+        {
+          loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 10 } },
+          message: "Secret found",
+          messageId: "found-secret",
+        },
+      ] as any,
+    });
+
+    const diff = `diff --git a/test.txt b/test.txt\n+++ b/test.txt\n+secret_data`;
+    const findings = await scanner.scanDiff(diff, "public");
+
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        type: "found-secret",
+        value: "Secret found",
+        riskTier: "high",
+      })
+    );
+  });
+
+  describe("getRepoMetadata", () => {
+    const remoteUrl = "https://github.com/owner/repo.git";
+
+    it("should return public when BANTAY_AUTH0_USER_ID is not set", async () => {
+      vi.stubEnv("BANTAY_AUTH0_USER_ID", "");
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const meta = await scanner.getRepoMetadata(remoteUrl);
+      expect(meta.repoVisibility).toBe("public");
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("BANTAY_AUTH0_USER_ID not set")
+      );
+    });
+
+    it("should return public and warn when GitHub API call fails", async () => {
+      vi.stubEnv("BANTAY_AUTH0_USER_ID", "user-123");
+      const { getRepoVisibility } = await import("../src/services/github");
+      vi.mocked(getRepoVisibility).mockRejectedValueOnce(new Error("Network Error"));
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const meta = await scanner.getRepoMetadata(remoteUrl);
+      expect(meta.repoVisibility).toBe("public");
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("visibility check failed"));
+    });
   });
 });
