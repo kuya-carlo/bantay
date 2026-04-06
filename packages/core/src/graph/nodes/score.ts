@@ -17,7 +17,7 @@ async function resolveLlmKey(providedSecrets?: Record<string, string>): Promise<
  * Node that scores the total risk of the findings using an OpenAI-compatible LLM
  */
 export async function scoreRisk(state: any): Promise<any> {
-  const { findings, repoMetadata, secrets } = state;
+  const { findings, secrets } = state;
 
   if (!findings || findings.length === 0) {
     return {
@@ -33,8 +33,7 @@ export async function scoreRisk(state: any): Promise<any> {
 
   const prompt = `
     You are a security expert. Analyze the following secret detection findings from a git diff and assess the risk level.
-    Repository Visibility: ${repoMetadata?.repoVisibility || "unknown"}
-    
+
     Findings (values are masked for security, but the TYPE is what matters):
     ${JSON.stringify(findings, null, 2)}
     

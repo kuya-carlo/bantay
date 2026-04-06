@@ -9,9 +9,7 @@ vi.mock("node:child_process");
 vi.mock("node:fs/promises");
 vi.mock("axios");
 vi.mock("@bantay/core", () => ({
-  ScannerService: vi.fn().mockImplementation(() => ({
-    getRepoMetadata: vi.fn().mockResolvedValue({ repoVisibility: "public" }),
-  })),
+  ScannerService: vi.fn(),
   buildGraph: vi.fn().mockResolvedValue({
     invoke: vi.fn().mockResolvedValue({
       findings: [],

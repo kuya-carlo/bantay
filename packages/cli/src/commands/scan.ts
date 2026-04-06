@@ -10,6 +10,7 @@ import {
   NotificationService,
   ConfigService,
   loadSecrets,
+  getGitContext,
 } from "@bantay/core";
 import { formatAssessment, formatFindings, formatInterrupt } from "../formatters";
 import chalk from "chalk";
@@ -40,8 +41,28 @@ export async function scanCommand(
     if (secrets.BANTAY_AUTH0_CLIENT_SECRET && !process.env.BANTAY_AUTH0_CLIENT_SECRET) {
       process.env.BANTAY_AUTH0_CLIENT_SECRET = secrets.BANTAY_AUTH0_CLIENT_SECRET;
     }
-    if (secrets.BANTAY_LLM_API_KEY && !process.env.VULTR_API_KEY) {
-      process.env.VULTR_API_KEY = secrets.BANTAY_LLM_API_KEY;
+    if (secrets.BANTAY_LLM_API_KEY) {
+      if (!process.env.VULTR_API_KEY) process.env.VULTR_API_KEY = secrets.BANTAY_LLM_API_KEY;
+      if (!process.env.BANTAY_LLM_API_KEY)
+        process.env.BANTAY_LLM_API_KEY = secrets.BANTAY_LLM_API_KEY;
+    }
+    if (secrets.BANTAY_AUTH0_CLIENT_ID && !process.env.BANTAY_AUTH0_CLIENT_ID) {
+      process.env.BANTAY_AUTH0_CLIENT_ID = secrets.BANTAY_AUTH0_CLIENT_ID;
+    }
+    if (secrets.BANTAY_AUTH0_DOMAIN && !process.env.BANTAY_AUTH0_DOMAIN) {
+      process.env.BANTAY_AUTH0_DOMAIN = secrets.BANTAY_AUTH0_DOMAIN;
+    }
+    if (secrets.BANTAY_LLM_BASE_URL && !process.env.BANTAY_LLM_BASE_URL) {
+      process.env.BANTAY_LLM_BASE_URL = secrets.BANTAY_LLM_BASE_URL;
+    }
+    if (secrets.BANTAY_LLM_MODEL && !process.env.BANTAY_LLM_MODEL) {
+      process.env.BANTAY_LLM_MODEL = secrets.BANTAY_LLM_MODEL;
+    }
+    if (secrets.BANTAY_NTFY_URL && !process.env.BANTAY_NTFY_URL) {
+      process.env.BANTAY_NTFY_URL = secrets.BANTAY_NTFY_URL;
+    }
+    if (secrets.BANTAY_NTFY_TOPIC && !process.env.BANTAY_NTFY_TOPIC) {
+      process.env.BANTAY_NTFY_TOPIC = secrets.BANTAY_NTFY_TOPIC;
     }
   } catch (e) {
     if (!process.env.BANTAY_AUTH0_CLIENT_SECRET) {
@@ -57,6 +78,18 @@ export async function scanCommand(
     process.exit(0);
   }
 
+  const gitCtx = getGitContext();
+
+  if (!gitCtx.isRepo) {
+    console.error(chalk.red("❌ Not a git repository. Navigate into a git repo before scanning."));
+    process.exit(1);
+  }
+
+  if (!gitCtx.hasCommits) {
+    console.log(chalk.yellow("⚠️  No commits yet. Nothing to scan."));
+    process.exit(0);
+  }
+
   const configService = new ConfigService();
   const config = await configService.load(process.cwd());
 
@@ -69,7 +102,7 @@ export async function scanCommand(
 
   // 1. Get diff to scan
   let diff = "";
-  let remoteUrl = "";
+  const remoteUrl = "";
 
   try {
     if (staged) {
@@ -96,10 +129,14 @@ export async function scanCommand(
         diff = execSync(`git diff ${remoteSha}..${localSha}`).toString().trim();
       } else {
         // Fallback for new branch or missing upstream
-        try {
-          diff = execSync("git diff @{u}..HEAD").toString().trim();
-        } catch {
-          diff = execSync("git diff HEAD~1..HEAD").toString().trim();
+        if (gitCtx.isInitialCommit) {
+          diff = execSync("git show -p HEAD").toString().trim();
+        } else {
+          try {
+            diff = execSync("git diff @{u}..HEAD").toString().trim();
+          } catch {
+            diff = execSync("git diff HEAD~1..HEAD").toString().trim();
+          }
         }
       }
     } else if (allFiles) {
@@ -138,20 +175,9 @@ export async function scanCommand(
       console.log(chalk.green("✅ No changes to scan."));
       return;
     }
-
-    // Get remote URL for metadata
-    try {
-      remoteUrl = execSync("git remote get-url origin").toString().trim();
-    } catch (e) {
-      console.warn(chalk.yellow("⚠️  Could not determine git remote URL. Defaulting to public."));
-    }
-
-    // Get remote metadata (visibility)
-    const metadata = await scannerService.getRepoMetadata(remoteUrl);
-    var repoVisibility = metadata.repoVisibility;
   } catch (e) {
     console.error(
-      chalk.red(`Failed to get git diff or metadata: ${e instanceof Error ? e.message : String(e)}`)
+      chalk.red(`Failed to get git diff: ${e instanceof Error ? e.message : String(e)}`)
     );
     process.exit(1);
   }
@@ -163,10 +189,9 @@ export async function scanCommand(
   try {
     const result = await graph.invoke({
       diff,
-      repoMetadata: { repoVisibility },
       approved: null,
       secrets,
-    } as any);
+    });
 
     // Check for findings and assessment
     if (result.findings && result.findings.length > 0) {
@@ -200,26 +225,36 @@ export async function scanCommand(
       }
 
       // Direct CIBA polling
-      const domain = process.env.BANTAY_AUTH0_DOMAIN || "kuyacarlo.jp.auth0.com";
-      const clientId = process.env.BANTAY_AUTH0_CLIENT_ID;
+      // Read identity from config as fallback
+      const configData = await fs
+        .readFile(path.join(os.homedir(), ".bantay", "config"), "utf8")
+        .then((c) => {
+          const parsed = JSON.parse(c);
+          const tenant = parsed.activeTenant || "default";
+          return parsed.tenants?.[tenant] || parsed;
+        })
+        .catch(() => ({}));
+
+      const domain =
+        process.env.BANTAY_AUTH0_DOMAIN || configData.auth0Domain || "kuyacarlo.jp.auth0.com";
+      const clientId = process.env.BANTAY_AUTH0_CLIENT_ID || configData.auth0ClientId;
       const clientSecret =
         process.env.BANTAY_AUTH0_CLIENT_SECRET || secrets.BANTAY_AUTH0_CLIENT_SECRET;
-      const auth0UserId =
-        process.env.BANTAY_AUTH0_USER_ID ||
-        (await fs
-          .readFile(path.join(os.homedir(), ".bantay", "config"), "utf8")
-          .then((c) => JSON.parse(c).auth0UserId)
-          .catch(() => null));
+      const auth0UserId = process.env.BANTAY_AUTH0_USER_ID || configData.auth0UserId;
 
       if (!clientId || !clientSecret || !auth0UserId) {
         console.error(chalk.red("❌ Missing credentials for CIBA approval."));
         process.exit(1);
       }
 
+      const cibaUserId = auth0UserId?.startsWith("auth0|")
+        ? auth0UserId
+        : configData.socialUserId || auth0UserId;
+
       const loginHint = JSON.stringify({
         format: "iss_sub",
         iss: `https://${domain}/`,
-        sub: auth0UserId,
+        sub: cibaUserId,
       });
 
       let authReqId: string;

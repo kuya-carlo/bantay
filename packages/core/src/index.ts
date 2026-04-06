@@ -6,3 +6,4 @@ export * from "./services/github";
 export * from "./services/secrets";
 export * from "./graph/index";
 export * from "./types/schemas";
+export * from "./utils/git";

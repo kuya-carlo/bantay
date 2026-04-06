@@ -100,7 +100,7 @@ export class ConfigService {
       ntfy: {
         ...DEFAULTS.ntfy,
         topic: repoConfig.ntfy?.topic || globalConfig.ntfyTopic || DEFAULTS.ntfy.topic,
-        url: process.env.BANTAY_NTFY_URL,
+        url: repoConfig.ntfy?.url || globalConfig.ntfyUrl || process.env.BANTAY_NTFY_URL,
         username: process.env.BANTAY_NTFY_USERNAME,
         password: process.env.BANTAY_NTFY_PASSWORD,
       },

@@ -111,6 +111,11 @@ Thumbs.db
 specs/
 walkthrough.md
 tsconfig.json.bak
+
 # LangGraph API
 .langgraph_api
 .aider*
+.agents/
+.continue/
+*test*/
+*demo*/

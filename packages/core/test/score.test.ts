@@ -23,7 +23,6 @@ describe("scoreRisk node", () => {
   it("should call LLM and return parsed risk assessment", async () => {
     const state = {
       findings: [{ type: "API Key", file: "index.js", line_number: 1, value: "sk-***" }],
-      repoMetadata: { repoVisibility: "public" },
     };
 
     const mockResponse = {

@@ -57,7 +57,7 @@ export class NotificationService {
       await executePost();
       console.log(`[ntfy] Alert sent to topic: ${topic}`);
     } catch (error: any) {
-      if (error.response?.status === 401) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
         try {
           const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
           const ask = (q: string) => new Promise<string>((resolve) => rl.question(q, resolve));

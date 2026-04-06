@@ -8,6 +8,8 @@ import readline from "node:readline";
 import axios from "axios";
 // @ts-ignore
 import { saveSecrets, loadSecrets } from "@bantay/core";
+import chalk from "chalk";
+import prompts from "prompts";
 
 /**
  * Collects all required inputs in a single readline session
@@ -15,40 +17,48 @@ import { saveSecrets, loadSecrets } from "@bantay/core";
 async function collectInputs(): Promise<{
   clientSecret: string;
   llmApiKey: string;
+  ntfyUrl: string;
+  ntfyTopic: string;
+  ntfyUsername: string;
+  ntfyPassword: string;
 }> {
   const existingSecrets = await loadSecrets();
 
   const clientSecretEnv =
     process.env.BANTAY_AUTH0_CLIENT_SECRET || existingSecrets.BANTAY_AUTH0_CLIENT_SECRET;
   const llmApiKeyEnv = process.env.BANTAY_LLM_API_KEY || existingSecrets.BANTAY_LLM_API_KEY;
+  const ntfyUrlEnv = process.env.BANTAY_NTFY_URL || existingSecrets.BANTAY_NTFY_URL;
   const ntfyTopicEnv = process.env.BANTAY_NTFY_TOPIC || existingSecrets.BANTAY_NTFY_TOPIC;
-
-  if (clientSecretEnv && llmApiKeyEnv) {
-    console.log("✓ All credentials found, skipping prompts.");
-    return {
-      clientSecret: clientSecretEnv,
-      llmApiKey: llmApiKeyEnv,
-    };
-  }
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  process.stdin.resume();
+  const ntfyUsernameEnv = process.env.BANTAY_NTFY_USERNAME || existingSecrets.BANTAY_NTFY_USERNAME;
+  const ntfyPasswordEnv = process.env.BANTAY_NTFY_PASSWORD || existingSecrets.BANTAY_NTFY_PASSWORD;
 
   const ask = (question: string): Promise<string> =>
     new Promise((resolve) => {
-      rl.question(question, resolve);
+      const p_rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      p_rl.question(question, (answer) => {
+        p_rl.close();
+        resolve(answer);
+      });
     });
+
+  const askHidden = async (question: string): Promise<string> => {
+    const response = await prompts({
+      type: "password",
+      name: "value",
+      message: question,
+    });
+    return response.value || "";
+  };
 
   // 1. Auth0 Client Secret
   let clientSecret = clientSecretEnv;
   if (clientSecret) {
     console.log("✓ Auth0 client secret found in environment, skipping prompt.");
   } else {
-    clientSecret = await ask("Enter your Auth0 client secret: ");
-    process.stdout.write("\n");
+    clientSecret = await askHidden("Enter your Auth0 client secret: ");
   }
 
   // 2. LLM API Key
@@ -56,12 +66,73 @@ async function collectInputs(): Promise<{
   if (llmApiKey) {
     console.log("✓ LLM API key found in environment, skipping prompt.");
   } else {
-    llmApiKey = await ask("Enter your LLM API key: ");
-    process.stdout.write("\n");
+    llmApiKey = await askHidden("Enter your LLM API key: ");
   }
 
-  rl.close();
-  return { clientSecret, llmApiKey };
+  // 3. ntfy URL
+  let ntfyUrl = ntfyUrlEnv || "https://ntfy.sh";
+  if (!ntfyUrlEnv) {
+    const input = await ask(`Enter ntfy server URL (default: ${ntfyUrl}): `);
+    if (input.trim()) ntfyUrl = input.trim();
+  } else {
+    console.log(`✓ ntfy URL found: ${ntfyUrl}`);
+  }
+
+  // 4. ntfy Topic
+  let ntfyTopic = ntfyTopicEnv || "bantay";
+  if (!ntfyTopicEnv) {
+    const input = await ask(`Enter ntfy topic (default: ${ntfyTopic}): `);
+    if (input.trim()) ntfyTopic = input.trim();
+  } else {
+    console.log(`✓ ntfy topic found: ${ntfyTopic}`);
+  }
+
+  // 5. ntfy Auth (only if needed or not in env)
+  let ntfyUsername = ntfyUsernameEnv || "";
+  let ntfyPassword = ntfyPasswordEnv || "";
+
+  if (!ntfyUsernameEnv) {
+    const input = await ask("Enter ntfy username (leave blank if public): ");
+    ntfyUsername = input.trim();
+    if (ntfyUsername) {
+      if (ntfyPasswordEnv) {
+        ntfyPassword = ntfyPasswordEnv;
+        console.log("✓ ntfy password found in secrets.");
+      } else {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const pass = await askHidden(`Enter ntfy password (attempt ${attempt}/3): `);
+          const auth = Buffer.from(`${ntfyUsername}:${pass}`).toString("base64");
+          try {
+            await axios.post(`${ntfyUrl}/${ntfyTopic}`, "Bantay login probe.", {
+              headers: { Title: "Bantay - Connection Test", Authorization: `Basic ${auth}` },
+            });
+            ntfyPassword = pass;
+            console.log("✅ ntfy credentials verified.");
+            break;
+          } catch {
+            if (attempt === 3) {
+              console.warn("⚠️  3 failed attempts. Switching to ntfy.sh (public).");
+              ntfyUrl = "https://ntfy.sh";
+              ntfyUsername = "";
+              ntfyPassword = "";
+            } else {
+              console.log(chalk.yellow(`❌ Wrong password. ${3 - attempt} attempt(s) remaining.`));
+            }
+          }
+        }
+      }
+    }
+  } else {
+    console.log(`✓ ntfy username found: ${ntfyUsername}`);
+    if (!ntfyPasswordEnv) {
+      // Should not happen if they used the normal flow, but let's be safe
+      ntfyPassword = await askHidden("Enter ntfy password: ");
+    } else {
+      ntfyPassword = ntfyPasswordEnv;
+    }
+  }
+
+  return { clientSecret, llmApiKey, ntfyUrl, ntfyTopic, ntfyUsername, ntfyPassword };
 }
 
 /**
@@ -194,8 +265,8 @@ export async function loginCommand(options: { tenant?: string } = {}) {
   }
 
   // Step 3: Collect Inputs
-  const { clientSecret, llmApiKey } = await collectInputs();
-  const ntfyTopic = process.env.BANTAY_NTFY_TOPIC || "bantay";
+  const { clientSecret, llmApiKey, ntfyUrl, ntfyTopic, ntfyUsername, ntfyPassword } =
+    await collectInputs();
 
   const server = http.createServer(async (req, res) => {
     const port = process.env.BANTAY_AUTH_PORT || 3000;
@@ -221,7 +292,10 @@ export async function loginCommand(options: { tenant?: string } = {}) {
         const userInfoRes = await axios.get(`https://${domain}/userinfo`, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
-        let auth0UserId = userInfoRes.data.sub;
+        const originalSub = userInfoRes.data.sub;
+        const socialType = originalSub.split("|")[0];
+        const socialUserId = originalSub;
+        let auth0UserId = originalSub;
 
         // Bug 2: Map github| identity to primary auth0| identity
         if (auth0UserId.startsWith("github|")) {
@@ -257,7 +331,37 @@ export async function loginCommand(options: { tenant?: string } = {}) {
         await saveSecrets({
           BANTAY_AUTH0_CLIENT_SECRET: clientSecret,
           BANTAY_LLM_API_KEY: llmApiKey,
+          BANTAY_AUTH0_CLIENT_ID: clientId,
+          BANTAY_AUTH0_DOMAIN: domain,
+          BANTAY_LLM_BASE_URL:
+            process.env.BANTAY_LLM_BASE_URL || "https://api.vultrinference.com/v1",
+          BANTAY_LLM_MODEL: process.env.BANTAY_LLM_MODEL || "Qwen/Qwen2.5-Coder-32B-Instruct",
+          BANTAY_NTFY_USERNAME: ntfyUsername,
+          BANTAY_NTFY_PASSWORD: ntfyPassword,
+          BANTAY_NTFY_URL: ntfyUrl,
+          BANTAY_NTFY_TOPIC: ntfyTopic,
         });
+
+        // 3.5 Notify successful login
+        try {
+          if (ntfyUsername && ntfyPassword) {
+            const auth = Buffer.from(`${ntfyUsername}:${ntfyPassword}`).toString("base64");
+            await axios.post(
+              `${ntfyUrl}/${ntfyTopic}`,
+              `👋 ${auth0UserId} logged in via ${socialType || "auth0"}.`,
+              {
+                headers: {
+                  Title: "Bantay - Login Successful",
+                  Tags: "white_check_mark,shield",
+                  Priority: "3",
+                  Authorization: `Basic ${auth}`,
+                },
+              }
+            );
+          }
+        } catch (e) {
+          // Probe already passed earlier, so this is just a final notification
+        }
 
         // 4. Update multi-tenant config
         const configDir = path.join(os.homedir(), ".bantay");
@@ -278,9 +382,12 @@ export async function loginCommand(options: { tenant?: string } = {}) {
 
         globalConfig.activeTenant = tenant;
         globalConfig.tenants[tenant] = {
-          auth0UserId,
+          auth0UserId, // always auth0| prefixed
+          socialType, // "github", "auth0", etc.
+          socialUserId, // original sub from userinfo
           auth0Domain: domain,
           auth0ClientId: clientId,
+          ntfyUrl,
           ntfyTopic,
         };
 

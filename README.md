@@ -1,64 +1,148 @@
-# Bantay 🛡️ (Auth0 Hackathon 2026)
+# bantay
 
-**Security-first secret detection with Auth0 "Authorized to Act" Human-in-the-Loop.**
+> tara na, nandito na ang bantay...
 
-Bantay is a pre-push hook that prevents accidental credential leakage by combining automated scanning with AI-powered risk assessment and human-initiated authorization.
+Pre-push git guardian that intercepts secrets before they leave your machine.
+Built for the Auth0 "Authorized to Act" Hackathon 2026.
+
+[![Main Frame](./assets/MainFrame.png)](https://youtu.be/5gfK5wFCnsE)
+
+## What it does
+
+When you run `git push`, bantay intercepts before anything hits the remote.
+Two layers of analysis, one decision, no raw secrets ever leave your machine.
+
+```
+git push
+  → regex + secretlint scans the diff
+  → LLM scores ambiguous findings (masked envelope only)
+  → LOW   → push goes through
+  → MEDIUM → Auth0 CIBA fires → ntfy notification → you approve on Guardian
+  → HIGH  → auto-blocked, no questions asked
+```
+
+Fail-closed by design. If anything breaks, the push is blocked.
 
 ## Features
 
-- 🔍 **Visibility-Aware Scanning**: Automatically detects repository visibility (Public vs. Private) to adjust risk thresholds dynamically.
-- 🧠 **AI Risk Scoring**: Uses Vultr Inference (Qwen 2.5 Coder) to assessFindings based on code context and expliotability.
-- 🔐 **Secure Secret Vault**: AES-256-GCM encrypted storage for local credentials in `~/.bantay/secrets`.
-- 🏢 **Multi-Tenant Support**: Manage multiple Auth0 tenants or environments using `bantay login --tenant <name>`.
-- 🤖 **Auto-Discovery**: User ID is automatically discovered via Auth0 `/userinfo` during login.
-- 📱 **ntfy Alerts**: Push notifications to your phone when a high-risk push is detected.
+- **Two-layer detection** — regex + secretlint for obvious secrets, Vultr/Qwen for context-aware risk scoring on ambiguous findings
+- **Auth0 CIBA** — async human-in-the-loop approval via Guardian push notification, not a terminal prompt
+- **Metadata envelope** — LLM never sees raw secret values, only masked metadata
+- **AES-256-GCM encrypted secrets** — stored locally in `~/.bantay/secrets`
+- **ntfy alerts** — out-of-band push notifications to your phone on medium-risk pushes
+- **Multi-tenant support** — `bantay login --tenant <name>` for multiple environments
+- **Fail-closed** — network failure, LLM timeout, CIBA expiry → push blocked
 
-## Getting Started
+## Getting started
 
-### 1. Prerequisites
+### Prerequisites
 
-- [pnpm](https://pnpm.io/)
 - Node.js 20+
+- pnpm
 
-### 2. Installation
+### Install
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build the monorepo
 pnpm build
-
-# Login to Auth0 (First time setup)
-# This will guide you through OAuth flow and master key generation
-node packages/cli/dist/index.js login
-
-# Initialize Bantay in your repo (installs pre-push hook)
-node packages/cli/dist/index.js init
 ```
 
-### 3. Configuration
+### Login
 
-Copy `.env.example` to `.env` and fill in your credentials. Bantay also supports a local `.bantay.yaml` for repo-specific policies.
+```bash
+bantay login
+```
 
-Required variables (can be set in `.env` or during `login`):
+Walks you through GitHub OAuth, generates an encrypted master key, probes your ntfy instance, and stores everything in `~/.bantay/secrets`. Run once per machine.
 
-- `BANTAY_AUTH0_DOMAIN`: Your Auth0 tenant domain.
-- `BANTAY_AUTH0_CLIENT_ID`: Your Auth0 application client ID.
-- `BANTAY_LLM_API_KEY`: API key for Vultr Inference.
-- `BANTAY_NTFY_TOPIC`: Your private ntfy topic for alerts.
+### Protect a repo
 
-## Edge Case Handling
+```bash
+bantay init <directory>
+```
 
-- **First Commit**: Handles initial pushes gracefully by diffing against the null tree.
-- **Network Failures**: Fail-closed logic ensures that if AI or Auth0 services are unreachable, the push is blocked by default.
-- **Buffered Input**: Fixed terminal prompt issues to ensure smooth CLI interaction.
+Installs the pre-push hook. Done.
 
-## Project Structure
+### Scan manually
 
-- `packages/core`: The security engine, encryption service, and LangGraph pipeline.
-- `packages/cli`: Terminal UI, git hook manager, and multi-tenant config management.
+```bash
+bantay scan              # uncommitted changes (default)
+bantay scan --staged     # staged only
+bantay scan --pre-push   # used by the hook
+bantay scan --all-files  # every tracked file
+bantay scan --all        # full history
+```
+
+## Configuration
+
+`.bantay.yaml` in your repo root for per-repo policy. Auth credentials are stored encrypted in `~/.bantay/secrets` after `bantay login` — no `.env` file needed.
+
+## Edge cases handled
+
+- **Initial commit** — diffs against null tree, no `HEAD~1` errors
+- **No upstream** — falls back gracefully, still scans
+- **Network failure** — fail-closed, push blocked
+- **Root commit** — `git show -p HEAD` fallback
+
+## Project structure
+
+```
+packages/
+  core/   → detection engine, LangGraph pipeline, Auth0, ntfy, secrets
+  cli/    → commands, git hook installer, terminal output
+```
+
+## Test coverage
+
+```
+47 tests passing · 94.37% statement coverage
+```
+
+## Stack
+
+- TypeScript monorepo — `@bantay/core` + `@bantay/cli`
+- LangGraph JS — push → analyze → interrupt → resume graph
+- Auth0 CIBA — async human-in-the-loop via Guardian
+- @auth0/ai-langchain — Token Vault for GitHub API calls
+- secretlint — first-pass detection
+- Vultr Serverless Inference — Qwen 2.5 Coder for LLM risk scoring
+- ntfy.sh (self-hosted) — out-of-band push notifications
+- AES-256-GCM — encrypted local secrets
+
+## Roadmap
+
+### v0.2 — CI integration
+
+- `bantay scan --ci` flag for GitHub Actions
+- Block PRs the same way it blocks local pushes
+- Status checks on pull requests
+
+### v0.3 — In-house detection engine
+
+- Custom policy rules per org — no secretlint dependency
+- `.bantay.yaml` policy DSL for defining what counts as sensitive
+- Configurable risk thresholds per branch, per file pattern
+
+### v1.0 — Team visibility
+
+- Dashboard showing what's being flagged across the whole engineering team
+- Audit log of all blocked/approved pushes
+- Slack/Discord integration alongside ntfy
+
+### v1.1 — Multi-tenant orgs
+
+- Org-level Auth0 tenants
+- Role-based approval routing — high risk goes to security lead, not the dev
+- SSO support
+
+### maybe v2
+
+- MCP integration — bantay as an MCP server for AI coding agents
+- In-editor scanning (VS Code extension)
+- PR-level scanning with bot comments
+-
 
 ---
 
-Built for the **Auth0 "Authorized to Act" Hackathon 2026**.
+Built for the **Auth0 "Authorized to Act" Hackathon 2026**  
+_tara na, nandito na ang bantay..._

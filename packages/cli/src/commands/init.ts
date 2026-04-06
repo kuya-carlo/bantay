@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { createInterface } from "node:readline";
-import { loadSecrets } from "@bantay/core";
+import { loadSecrets, getGitContext } from "@bantay/core";
 import { exec } from "node:child_process";
+import { execSync } from "node:child_process";
 
 /**
  * Executes the bantay init command
@@ -29,18 +30,16 @@ export async function initCommand(directory: string) {
   }
 
   const projectRoot = process.cwd();
-  const gitDir = path.join(projectRoot, ".git");
+  const gitCtx = getGitContext();
 
   // 1. Check if we are in a git repo
-  try {
-    await fs.access(gitDir);
-  } catch (e) {
+  if (!gitCtx.isRepo) {
     console.warn(chalk.yellow("⚠️  No .git found. Initializing git repo..."));
-    await new Promise<void>((resolve, reject) => {
-      exec("git init", { cwd: projectRoot }, (err) => (err ? reject(err) : resolve()));
-    });
+    execSync("git init", { cwd: projectRoot });
     console.log(chalk.green("✅ Git repo initialized."));
   }
+
+  const gitDir = path.join(projectRoot, ".git");
 
   console.log(chalk.blue("🛡️  Initializing Bantay..."));
 

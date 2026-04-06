@@ -1,16 +1,15 @@
 import { z } from "zod";
 
-export type Finding = {
-  file: string;
-  line_number: number;
-  type: string;
-  value: string;
-  riskTier?: "high" | "medium" | "low";
-};
+export const FindingSchema = z.object({
+  file: z.string(),
+  line_number: z.number(),
+  type: z.string(),
+  value: z.string(),
+  riskTier: z.enum(["low", "medium", "high"]),
+});
 
-/**
- * Schema for the LLM risk assessment output
- */
+export type Finding = z.infer<typeof FindingSchema>;
+
 export const RiskAssessmentSchema = z.object({
   tier: z.enum(["low", "medium", "high"]),
   reason: z.string(),
@@ -18,3 +17,11 @@ export const RiskAssessmentSchema = z.object({
 });
 
 export type RiskAssessment = z.infer<typeof RiskAssessmentSchema>;
+
+export const ScannerStateSchema = z.object({
+  diff: z.string(),
+  findings: z.array(FindingSchema).optional(),
+  riskAssessment: RiskAssessmentSchema.optional(),
+  approved: z.boolean().nullable().optional(),
+  secrets: z.record(z.string()).optional(),
+});

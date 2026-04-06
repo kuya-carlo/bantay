@@ -55,40 +55,9 @@ export class ScannerService {
   }
 
   /**
-   * Fetches repository visibility metadata via GitHub API
-   */
-  async getRepoMetadata(remoteUrl: string): Promise<{ repoVisibility: "public" | "private" }> {
-    const userId = process.env.BANTAY_AUTH0_USER_ID;
-    if (!userId) {
-      console.error("[Scanner] Warning: BANTAY_AUTH0_USER_ID not set. Defaulting to public.");
-      return { repoVisibility: "public" };
-    }
-
-    try {
-      const match = remoteUrl.match(
-        /(?:git@github\.com:|https:\/\/github\.com\/)([^/]+)\/([^/.]+)(?:\.git)?/
-      );
-      if (!match) {
-        throw new Error(`Could not parse GitHub owner/repo from ${remoteUrl}`);
-      }
-      const [, owner, repo] = match;
-
-      const token = await getGithubToken(userId);
-      const visibility = await getRepoVisibility(owner, repo, token);
-
-      return { repoVisibility: visibility };
-    } catch (error: any) {
-      console.warn(
-        `[Scanner] Warning: GitHub visibility check failed. Defaulting to public. Error: ${error.message}`
-      );
-      return { repoVisibility: "public" };
-    }
-  }
-
-  /**
    * Scans a git diff for secrets
    */
-  async scanDiff(diff: string, repoVisibility: "public" | "private"): Promise<Finding[]> {
+  async scanDiff(diff: string): Promise<Finding[]> {
     const findings: Finding[] = [];
     const files = this.parseDiff(diff);
 
@@ -99,12 +68,9 @@ export class ScannerService {
       if (this.fileNameRegex.some((regex) => regex.test(basename))) {
         let riskTier: "high" | "medium" | "low" = "high";
 
-        // Visibility-aware risk tier for .map files
+        // Source maps are always medium risk
         if (basename.endsWith(".map")) {
-          riskTier =
-            repoVisibility === "public"
-              ? this.config.scan.sourceMaps.publicRepo
-              : this.config.scan.sourceMaps.privateRepo;
+          riskTier = "medium";
         }
 
         findings.push({
