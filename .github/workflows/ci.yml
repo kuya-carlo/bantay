@@ -54,11 +54,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm -r lint --if-present
+        run: pnpm run -r --if-present lint
 
       - name: Typecheck
-        run: pnpm -r typecheck --if-present
+        run: pnpm run -r --if-present typecheck
 
       - name: Format check
-        run: pnpm -r format:check --if-present
+        run: pnpm run -r --if-present format:check
+
 
