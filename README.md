@@ -140,9 +140,7 @@ packages/
 - MCP integration — bantay as an MCP server for AI coding agents
 - In-editor scanning (VS Code extension)
 - PR-level scanning with bot comments
--
-
----
+- ***
 
 Built for the **Auth0 "Authorized to Act" Hackathon 2026**  
 _tara na, nandito na ang bantay..._

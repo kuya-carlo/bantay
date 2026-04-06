@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ScannerService } from "../src/services/scanner";
 import { BantayConfig } from "../src/services/config";
 
-
-
 vi.mock("@secretlint/core", () => ({
   lintSource: vi.fn().mockResolvedValue({ messages: [] }),
 }));
@@ -121,6 +119,4 @@ describe("ScannerService", () => {
       })
     );
   });
-
-
 });

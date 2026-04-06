@@ -1,8 +1,6 @@
 export async function decide(state: any) {
   const { riskAssessment, approved } = state;
-  const hasSensitiveFile = state.findings?.some(
-    (f: any) => f.type === "Sensitive Filename"
-  );
+  const hasSensitiveFile = state.findings?.some((f: any) => f.type === "Sensitive Filename");
   if (hasSensitiveFile && riskAssessment.tier === "low") {
     return { approved: null }; // Force MEDIUM
   }
