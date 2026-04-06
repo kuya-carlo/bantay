@@ -113,3 +113,4 @@ walkthrough.md
 tsconfig.json.bak
 # LangGraph API
 .langgraph_api
+.aider*

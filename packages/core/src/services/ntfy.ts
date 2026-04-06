@@ -1,4 +1,6 @@
 import axios from "axios";
+import readline from "node:readline";
+import { loadSecrets, saveSecrets } from "./secrets";
 
 /**
  * Service to send out-of-band notifications via ntfy.kuyacarlo.dev
@@ -13,13 +15,10 @@ export class NotificationService {
     const user = config?.user || process.env.BANTAY_NTFY_USERNAME;
     const pass = config?.pass || process.env.BANTAY_NTFY_PASSWORD;
 
-    if (!user || !pass) {
-      console.warn(
-        "[ntfy] Warning: No authentication configured. Publishing without auth — topic must be public."
-      );
-      this.auth = null;
-    } else {
+    if (user && pass) {
       this.auth = Buffer.from(`${user}:${pass}`).toString("base64");
+    } else {
+      this.auth = null;
     }
   }
 
@@ -38,27 +37,60 @@ export class NotificationService {
       Priority: "4", // High
     };
 
-    if (this.auth) {
-      headers["Authorization"] = `Basic ${this.auth}`;
-    }
-
     if (actions && actions.length > 0) {
       // ntfy Action buttons format: "view, label, url; view, label, url"
-      // We use 'view' for simple URLs or 'http' for POSTs (Auth0 CIBA usually requires POST)
-      // Let's use 'view' for the dashboard/approval link for MVP
       const ntfyActions = actions
         .map((a) => `${a.type || "view"}, ${a.label}, ${a.url}`)
         .join("; ");
       headers["Actions"] = ntfyActions;
     }
 
+    const executePost = async () => {
+      const currentHeaders = { ...headers };
+      if (this.auth) {
+        currentHeaders["Authorization"] = `Basic ${this.auth}`;
+      }
+      return axios.post(url, message, { headers: currentHeaders });
+    };
+
     try {
-      await axios.post(url, message, { headers });
+      await executePost();
       console.log(`[ntfy] Alert sent to topic: ${topic}`);
-    } catch (error) {
-      console.error(
-        `[ntfy] Failed to send alert: ${error instanceof Error ? error.message : String(error)}`
-      );
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        try {
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const ask = (q: string) => new Promise<string>((resolve) => rl.question(q, resolve));
+
+          const username = await ask("ntfy requires auth. Enter username: ");
+          const password = await ask("Enter password: ");
+          rl.close();
+
+          if (username && password) {
+            this.auth = Buffer.from(`${username}:${password}`).toString("base64");
+
+            // Retry with auth
+            await executePost();
+            console.log(`[ntfy] Alert sent to topic: ${topic} (authenticated)`);
+
+            // Save for future use
+            const currentSecrets = await loadSecrets();
+            await saveSecrets({
+              ...currentSecrets,
+              BANTAY_NTFY_USERNAME: username,
+              BANTAY_NTFY_PASSWORD: password,
+            });
+          }
+        } catch (retryError: any) {
+          console.warn(
+            `[ntfy] Failed to send alert after auth attempt: ${
+              retryError.response?.data || retryError.message
+            }`
+          );
+        }
+      } else {
+        console.warn(`[ntfy] Failed to send alert: ${error.response?.data || error.message}`);
+      }
     }
   }
 

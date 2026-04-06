@@ -3,12 +3,18 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { createInterface } from "node:readline";
-import { loadSecrets } from "../../../core/src/services/secrets";
+import { loadSecrets } from "@bantay/core";
+import { exec } from "node:child_process";
 
 /**
  * Executes the bantay init command
  */
-export async function initCommand() {
+export async function initCommand(directory: string) {
+  if (directory) {
+    await fs.mkdir(directory, { recursive: true });
+    process.chdir(directory);
+  }
+
   // 0. Login Check
   try {
     const secrets = await loadSecrets();
@@ -29,12 +35,11 @@ export async function initCommand() {
   try {
     await fs.access(gitDir);
   } catch (e) {
-    console.error(
-      chalk.red(
-        "Error: .git directory not found. Please run this command from the root of a git repository."
-      )
-    );
-    process.exit(1);
+    console.warn(chalk.yellow("⚠️  No .git found. Initializing git repo..."));
+    await new Promise<void>((resolve, reject) => {
+      exec("git init", { cwd: projectRoot }, (err) => (err ? reject(err) : resolve()));
+    });
+    console.log(chalk.green("✅ Git repo initialized."));
   }
 
   console.log(chalk.blue("🛡️  Initializing Bantay..."));
@@ -86,18 +91,11 @@ thresholds:
 
 echo "🛡️  Bantay: Checking for secrets before push..."
 
-# Run the scan command using the relative path from repo root
-REPO_ROOT=$(git rev-parse --show-toplevel)
-node "$REPO_ROOT/packages/cli/dist/index.js" scan
-
+# Run the scan command
+bantay scan --pre-push
 EXIT_CODE=$?
 
-if [ $EXIT_CODE -ne 0 ]; then
-  echo "❌ Push blocked by Bantay. Please review the security findings above."
-  exit 1
-fi
-
-exit 0
+exit $EXIT_CODE
 `;
 
   // Check if hook already exists
@@ -144,5 +142,8 @@ exit 0
     process.exit(1);
   }
 
-  console.log(chalk.bold.green("\n🎉 Bantay is now active! Your pushes are protected.\n"));
+  console.log(chalk.bold.green(`\n🎉 Bantay is now active! Your pushes are protected.`));
+  if (directory) {
+    console.log(`To continue, run \`cd ${directory}\``);
+  }
 }

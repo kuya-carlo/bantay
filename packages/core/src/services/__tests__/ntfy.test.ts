@@ -3,6 +3,11 @@ import axios from "axios";
 import { NotificationService } from "../ntfy";
 
 vi.mock("axios");
+vi.mock("node:readline");
+vi.mock("../secrets", () => ({
+  loadSecrets: vi.fn().mockResolvedValue({}),
+  saveSecrets: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("NotificationService", () => {
   beforeEach(() => {
@@ -74,7 +79,7 @@ describe("NotificationService", () => {
 
   it("should not throw when axios POST fails", async () => {
     vi.mocked(axios.post).mockRejectedValue(new Error("Network Error"));
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const ntfy = new NotificationService();
 
@@ -99,6 +104,34 @@ describe("NotificationService", () => {
         headers: expect.objectContaining({
           Actions: "view, Approve, https://approve.com; http, Deny, https://deny.com",
         }),
+      })
+    );
+  });
+
+  it("should handle 401 by prompting for auth and retrying", async () => {
+    const { loadSecrets, saveSecrets } = await import("../secrets");
+    const readline = await import("node:readline");
+
+    const rlMock = {
+      question: vi.fn((q, cb) => cb(q.includes("username") ? "newuser" : "newpass")),
+      close: vi.fn(),
+    };
+    vi.mocked(readline.createInterface).mockReturnValue(rlMock as any);
+
+    // 1st call fails, 2nd succeeds
+    vi.mocked(axios.post)
+      .mockRejectedValueOnce({ response: { status: 401 } })
+      .mockResolvedValueOnce({ data: "ok" });
+
+    const ntfy = new NotificationService();
+    await ntfy.sendAlert("topic", "msg");
+
+    expect(rlMock.question).toHaveBeenCalledTimes(2);
+    expect(axios.post).toHaveBeenCalledTimes(2);
+    expect(saveSecrets).toHaveBeenCalledWith(
+      expect.objectContaining({
+        BANTAY_NTFY_USERNAME: "newuser",
+        BANTAY_NTFY_PASSWORD: "newpass",
       })
     );
   });

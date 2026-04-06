@@ -15,65 +15,53 @@ import { saveSecrets, loadSecrets } from "@bantay/core";
 async function collectInputs(): Promise<{
   clientSecret: string;
   llmApiKey: string;
-  ntfyTopic: string;
 }> {
+  const existingSecrets = await loadSecrets();
+
+  const clientSecretEnv =
+    process.env.BANTAY_AUTH0_CLIENT_SECRET || existingSecrets.BANTAY_AUTH0_CLIENT_SECRET;
+  const llmApiKeyEnv = process.env.BANTAY_LLM_API_KEY || existingSecrets.BANTAY_LLM_API_KEY;
+  const ntfyTopicEnv = process.env.BANTAY_NTFY_TOPIC || existingSecrets.BANTAY_NTFY_TOPIC;
+
+  if (clientSecretEnv && llmApiKeyEnv) {
+    console.log("✓ All credentials found, skipping prompts.");
+    return {
+      clientSecret: clientSecretEnv,
+      llmApiKey: llmApiKeyEnv,
+    };
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stderr,
+    output: process.stdout,
   });
   process.stdin.resume();
 
-  const ask = (question: string, muted = false): Promise<string> =>
+  const ask = (question: string): Promise<string> =>
     new Promise((resolve) => {
-      if (muted) {
-        // @ts-ignore
-        rl._writeToOutput = (s: string) => {
-          if (["\r", "\n", "\r\n"].includes(s)) {
-            (rl as any).output.write(s);
-          }
-        };
-      } else {
-        // @ts-ignore
-        rl._writeToOutput = (s: string) => {
-          (rl as any).output.write(s);
-        };
-      }
-      process.stderr.write(question);
-      rl.question("", resolve);
+      rl.question(question, resolve);
     });
 
-  const existingSecrets = await loadSecrets();
-
   // 1. Auth0 Client Secret
-  let clientSecret =
-    process.env.BANTAY_AUTH0_CLIENT_SECRET || existingSecrets.BANTAY_AUTH0_CLIENT_SECRET;
+  let clientSecret = clientSecretEnv;
   if (clientSecret) {
     console.log("✓ Auth0 client secret found in environment, skipping prompt.");
   } else {
-    clientSecret = await ask("Enter your Auth0 client secret: ", true);
-    process.stderr.write("\n");
+    clientSecret = await ask("Enter your Auth0 client secret: ");
+    process.stdout.write("\n");
   }
 
   // 2. LLM API Key
-  let llmApiKey = process.env.BANTAY_LLM_API_KEY || existingSecrets.BANTAY_LLM_API_KEY;
+  let llmApiKey = llmApiKeyEnv;
   if (llmApiKey) {
     console.log("✓ LLM API key found in environment, skipping prompt.");
   } else {
-    llmApiKey = await ask("Enter your LLM API key: ", true);
-    process.stderr.write("\n");
-  }
-
-  // 3. ntfy topic — not a secret, skip if found in env/secrets
-  let ntfyTopic = process.env.BANTAY_NTFY_TOPIC || existingSecrets.BANTAY_NTFY_TOPIC;
-  if (ntfyTopic) {
-    console.log(`✓ ntfy topic found in environment (${ntfyTopic}), skipping prompt.`);
-  } else {
-    ntfyTopic = await ask("Enter your ntfy topic (default: bantay): ");
-    if (!ntfyTopic) ntfyTopic = "bantay";
+    llmApiKey = await ask("Enter your LLM API key: ");
+    process.stdout.write("\n");
   }
 
   rl.close();
-  return { clientSecret, llmApiKey, ntfyTopic };
+  return { clientSecret, llmApiKey };
 }
 
 /**
@@ -172,11 +160,42 @@ export async function loginCommand(options: { tenant?: string } = {}) {
   const clientId = process.env.BANTAY_AUTH0_CLIENT_ID || "zNuS01PgB3suIY9s6qkbUrav4dBu3bP1";
 
   // Step 1: Master Key
-  const masterKey = crypto.randomBytes(32).toString("hex");
-  await updateShellRc("BANTAY_MASTER_KEY", masterKey);
+  let masterKey = process.env.BANTAY_MASTER_KEY;
+  if (!masterKey) {
+    masterKey = crypto.randomBytes(32).toString("hex");
+    await updateShellRc("BANTAY_MASTER_KEY", masterKey);
+  } else {
+    console.log("✓ Reusing existing master key found in environment.");
+  }
 
-  // Step 2: Collect Inputs
-  const { clientSecret, llmApiKey, ntfyTopic } = await collectInputs();
+  // Step 2: Secrets Validation
+  const secretsPath = path.join(os.homedir(), ".bantay", "secrets");
+  try {
+    await fs.access(secretsPath);
+    const existing = await loadSecrets();
+    if (Object.keys(existing).length === 0) {
+      // File exists but decryption failed (returns {} on catch)
+      throw new Error("Decryption failed");
+    }
+    console.log("✓ Existing secrets are valid and readable.");
+  } catch (e: any) {
+    if (e.code !== "ENOENT") {
+      try {
+        await fs.unlink(secretsPath);
+        console.log("⚠️  Stale or undecryptable secrets file removed.");
+        console.log(
+          "💡 Tip: Use 'bantay login --tenant work' or '--tenant personal' to manage multiple accounts."
+        );
+        console.log(
+          "   The 'activeTenant' in ~/.bantay/config controls which one is currently in use."
+        );
+      } catch {}
+    }
+  }
+
+  // Step 3: Collect Inputs
+  const { clientSecret, llmApiKey } = await collectInputs();
+  const ntfyTopic = process.env.BANTAY_NTFY_TOPIC || "bantay";
 
   const server = http.createServer(async (req, res) => {
     const port = process.env.BANTAY_AUTH_PORT || 3000;
@@ -202,7 +221,37 @@ export async function loginCommand(options: { tenant?: string } = {}) {
         const userInfoRes = await axios.get(`https://${domain}/userinfo`, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
-        const auth0UserId = userInfoRes.data.sub;
+        let auth0UserId = userInfoRes.data.sub;
+
+        // Bug 2: Map github| identity to primary auth0| identity
+        if (auth0UserId.startsWith("github|")) {
+          try {
+            const mgmtTokenRes = await axios.post(`https://${domain}/oauth/token`, {
+              grant_type: "client_credentials",
+              client_id: clientId,
+              client_secret: clientSecret,
+              audience: `https://${domain}/api/v2/`,
+              scope: "read:users",
+            });
+
+            const identitiesRes = await axios.get(
+              `https://${domain}/api/v2/users/${encodeURIComponent(auth0UserId)}/identities`,
+              {
+                headers: {
+                  Authorization: `Bearer ${mgmtTokenRes.data.access_token}`,
+                },
+              }
+            );
+
+            const auth0Identity = identitiesRes.data.find((id: any) => id.provider === "auth0");
+            if (auth0Identity) {
+              auth0UserId = `auth0|${auth0Identity.user_id}`;
+              console.log(`✓ Resolved primary Auth0 identity: ${auth0UserId}`);
+            }
+          } catch (e: any) {
+            console.warn(`⚠️  Identity mapping failed: ${e.message}. Using original ID.`);
+          }
+        }
 
         // 3. Save encrypted secrets
         await saveSecrets({
@@ -259,7 +308,6 @@ export async function loginCommand(options: { tenant?: string } = {}) {
         client_id: clientId,
         redirect_uri: process.env.BANTAY_REDIRECT_URI || `http://localhost:3000/callback`,
         scope: "openid profile email",
-        connection: "github",
       }).toString();
 
     console.log(`\n🌍 Opening browser for GitHub login...`);

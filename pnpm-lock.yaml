@@ -69,6 +69,13 @@ importers:
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
+    devDependencies:
+      '@vitest/coverage-v8':
+        specifier: ^1.6.1
+        version: 1.6.1(vitest@1.6.1(@types/node@20.19.25))
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.19.25)
 
   packages/core:
     dependencies:

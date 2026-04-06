@@ -15,6 +15,9 @@ export class ScannerService {
   private contentRegex: { pattern: RegExp; type: string }[] = [
     { pattern: /sk-ant-api\d{2}-[a-zA-Z0-9_-]{16,}/g, type: "Anthropic API Key" },
     { pattern: /sk-[a-zA-Z0-9]{48}/g, type: "OpenAI API Key" },
+    { pattern: /sk-live-[a-zA-Z0-9]{20,}/g, type: "Stripe Live Key" },
+    { pattern: /sk-test-[a-zA-Z0-9]{20,}/g, type: "Stripe Test Key" },
+    { pattern: /rk_live_[a-zA-Z0-9]{20,}/g, type: "Stripe Restricted Key" },
     { pattern: /ghp_[a-zA-Z0-9]{36}/g, type: "GitHub Personal Access Token" },
     { pattern: /ghs_[a-zA-Z0-9]{36}/g, type: "GitHub App Token" },
     { pattern: /AKIA[0-9A-Z]{16}/g, type: "AWS Access Key" },
@@ -26,6 +29,19 @@ export class ScannerService {
       type: "JWT Token",
     },
     { pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g, type: "Private Key" },
+    { pattern: /ya29\.[0-9A-Za-z\-_/]+/g, type: "Google OAuth Access Token" },
+    { pattern: /access_token=[a-z0-9]{32}/g, type: "OAuth Access Token" },
+    { pattern: /refresh_token=[a-z0-9]{32}/g, type: "OAuth Refresh Token" },
+    {
+      pattern: /https?:\/\/[^\s"\[]*[?&](?:api_key|client_secret|token|key)=[^&"'\s]+/g,
+      type: "Credential in URL",
+    },
+    { pattern: /AQE[A-Za-z0-9][^"'\s]{16,}/g, type: "AWS Secret Key" },
+    {
+      pattern: /-----BEGIN\s+(PGP|CERTIFICATE|SSH|OPENSSH)\s+PRIVATE\s+KEY-----/g,
+      type: "Other Private Key",
+    },
+    { pattern: /ssh-rsa\s+[A-Za-z0-9\/+]{100,}/g, type: "SSH Public Key (ID)" },
   ];
 
   constructor(private config: BantayConfig) {
@@ -50,7 +66,7 @@ export class ScannerService {
 
     try {
       const match = remoteUrl.match(
-        /(?:git@github\.com:|https:\/\/github\.com\/)([^\/]+)\/([^\/\.]+)(?:\.git)?/
+        /(?:git@github\.com:|https:\/\/github\.com\/)([^/]+)\/([^/.]+)(?:\.git)?/
       );
       if (!match) {
         throw new Error(`Could not parse GitHub owner/repo from ${remoteUrl}`);
@@ -130,8 +146,8 @@ export class ScannerService {
       file.content.split("\n").forEach((lineContent, lineIndex) => {
         for (const { pattern, type } of this.contentRegex) {
           pattern.lastIndex = 0;
-          const match = pattern.exec(lineContent);
-          if (match) {
+          let match;
+          while ((match = pattern.exec(lineContent)) !== null) {
             findings.push({
               file: file.path,
               line_number: lineIndex + 1,
@@ -140,6 +156,17 @@ export class ScannerService {
               riskTier: "high",
             });
           }
+        }
+
+        // 4. High entropy string detection
+        if (this.isHighEntropyString(lineContent)) {
+          findings.push({
+            file: file.path,
+            line_number: lineIndex + 1,
+            type: "High Entropy String",
+            value: lineContent.substring(0, 20) + "***",
+            riskTier: "high",
+          });
         }
       });
     }
@@ -180,5 +207,60 @@ export class ScannerService {
     }
 
     return files;
+  }
+
+  /**
+   * Check if a string has high entropy (potential secret)
+   * @param s - Input string
+   * @returns boolean indicating if string has high entropy
+   */
+  private isHighEntropyString(s: string): boolean {
+    // Skip short strings and obvious non-secrets
+    if (s.length < 20 || /^\s*$/.test(s) || s.length > 1000) {
+      return false;
+    }
+
+    // Skip strings with long sequences of the same character
+    if (/(.)\1{10,}/.test(s)) {
+      return false;
+    }
+
+    // Skip strings that are mostly spaces or common delimiters
+    const nonAlphaNum = s.replace(/[a-zA-Z0-9]/g, "").length;
+    if (nonAlphaNum / s.length > 0.7) {
+      return false;
+    }
+
+    // Skip URLs and email addresses
+    if (/https?:\/\/|@/.test(s)) {
+      return false;
+    }
+
+    return this.shannonEntropy(s) > 4.5;
+  }
+
+  /**
+   * Calculate Shannon entropy of a string
+   * @param s - Input string (e.g., a potential secret)
+   * @returns Entropy value in bits (typically 0–6.0 for ASCII)
+   */
+  private shannonEntropy(s: string): number {
+    const len = s.length;
+    if (len === 0) return 0;
+
+    // Build frequency map
+    const freq: Record<string, number> = {};
+    for (const char of s) {
+      freq[char] = (freq[char] || 0) + 1;
+    }
+
+    // Calculate entropy
+    let entropy = 0;
+    for (const count of Object.values(freq)) {
+      const probability = count / len;
+      entropy -= probability * Math.log2(probability);
+    }
+
+    return entropy;
   }
 }

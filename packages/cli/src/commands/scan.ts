@@ -4,23 +4,44 @@ import path from "node:path";
 import os from "node:os";
 import axios from "axios";
 // @ts-ignore
-import { buildGraph, ScannerService } from "@bantay/core";
-// @ts-ignore
-import { NotificationService, ConfigService } from "@bantay/core";
-import { loadSecrets } from "../../../core/src/services/secrets";
+import {
+  buildGraph,
+  ScannerService,
+  NotificationService,
+  ConfigService,
+  loadSecrets,
+} from "@bantay/core";
 import { formatAssessment, formatFindings, formatInterrupt } from "../formatters";
 import chalk from "chalk";
 
 /**
  * Executes the bantay scan command
  */
-export async function scanCommand(options: { ci?: boolean; staged?: boolean } = {}) {
-  const { ci, staged } = options;
-  // 0. Login Check
+export async function scanCommand(
+  options: {
+    ci?: boolean;
+    staged?: boolean;
+    prePush?: boolean;
+    allFiles?: boolean;
+    all?: boolean;
+  } = {}
+) {
+  const { ci, staged, prePush, allFiles, all } = options;
+  // 0. Login Check & Secrets Loading
+  let secrets: any = {};
   try {
-    const secrets = await loadSecrets();
+    secrets = await loadSecrets();
     if (!process.env.BANTAY_AUTH0_CLIENT_SECRET && !secrets.BANTAY_AUTH0_CLIENT_SECRET) {
       throw new Error();
+    }
+    if (secrets.BANTAY_AUTH0_USER_ID && !process.env.BANTAY_AUTH0_USER_ID) {
+      process.env.BANTAY_AUTH0_USER_ID = secrets.BANTAY_AUTH0_USER_ID;
+    }
+    if (secrets.BANTAY_AUTH0_CLIENT_SECRET && !process.env.BANTAY_AUTH0_CLIENT_SECRET) {
+      process.env.BANTAY_AUTH0_CLIENT_SECRET = secrets.BANTAY_AUTH0_CLIENT_SECRET;
+    }
+    if (secrets.BANTAY_LLM_API_KEY && !process.env.VULTR_API_KEY) {
+      process.env.VULTR_API_KEY = secrets.BANTAY_LLM_API_KEY;
     }
   } catch (e) {
     if (!process.env.BANTAY_AUTH0_CLIENT_SECRET) {
@@ -40,29 +61,76 @@ export async function scanCommand(options: { ci?: boolean; staged?: boolean } = 
   const config = await configService.load(process.cwd());
 
   const scannerService = new (ScannerService as any)(config);
-  const notificationService = new NotificationService();
+  const notificationService = new NotificationService({
+    user: process.env.BANTAY_NTFY_USERNAME || secrets.BANTAY_NTFY_USERNAME,
+    pass: process.env.BANTAY_NTFY_PASSWORD || secrets.BANTAY_NTFY_PASSWORD,
+    baseURL: process.env.BANTAY_NTFY_URL || (config.ntfy as any)?.url,
+  });
 
-  // 1. Get staged changes and remote metadata
+  // 1. Get diff to scan
   let diff = "";
   let remoteUrl = "";
+
   try {
     if (staged) {
-      diff = execSync("git diff --cached").toString();
+      diff = execSync("git diff --cached").toString().trim();
     } else if (ci) {
       try {
-        const base = execSync("git merge-base origin/main HEAD").toString().trim();
-        diff = execSync(`git diff ${base}..HEAD`).toString();
+        const base = execSync("git merge-base origin/main HEAD", {
+          stdio: ["pipe", "pipe", "pipe"],
+        })
+          .toString()
+          .trim();
+        diff = execSync(`git diff ${base}..HEAD`).toString().trim();
       } catch (e) {
-        // Fallback for CI if origin/main doesn't exist
-        diff = execSync("git diff HEAD~1..HEAD").toString();
+        diff = execSync("git diff HEAD~1..HEAD").toString().trim();
       }
-    } else {
-      // Default: pre-push hook (compare HEAD with previous commit)
+    } else if (prePush) {
+      // Non-blocking stdin read for pre-push hooks
+      const stdin = await readStdinAsync(500);
+      const lines = stdin.trim().split("\n");
+      const parts = lines[0]?.split(" ") || [];
+      const [localSha, remoteSha] = [parts[1], parts[3]];
+
+      if (localSha && remoteSha && !/^0+$/.test(remoteSha)) {
+        diff = execSync(`git diff ${remoteSha}..${localSha}`).toString().trim();
+      } else {
+        // Fallback for new branch or missing upstream
+        try {
+          diff = execSync("git diff @{u}..HEAD").toString().trim();
+        } catch {
+          diff = execSync("git diff HEAD~1..HEAD").toString().trim();
+        }
+      }
+    } else if (allFiles) {
+      // Scan all tracked files
+      diff = execSync("git diff $(git hash-object -t tree /dev/null) HEAD").toString().trim();
+
+      // Include untracked files by faking a diff
       try {
-        diff = execSync("git diff HEAD~1..HEAD").toString();
+        const untracked = execSync("git ls-files --others --exclude-standard").toString().trim();
+        if (untracked) {
+          for (const file of untracked.split("\n")) {
+            const content = await fs.readFile(file, "utf8");
+            const fakeDiff = `\ndiff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n${content
+              .split("\n")
+              .map((line) => `+${line}`)
+              .join("\n")}\n`;
+            diff += fakeDiff;
+          }
+        }
       } catch (e) {
-        // Fallback if it's the first commit in the repo
-        diff = execSync("git diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904..HEAD").toString();
+        // Untracked scan error
+      }
+    } else if (all) {
+      diff = execSync("git log --all -p").toString().trim();
+    } else {
+      // Default: uncommitted changes (staged + unstaged)
+      try {
+        diff = execSync("git diff HEAD").toString().trim();
+      } catch (e) {
+        // Fallback for initial commit
+        diff = execSync("git diff $(git hash-object -t tree /dev/null)").toString().trim();
       }
     }
 
@@ -82,7 +150,9 @@ export async function scanCommand(options: { ci?: boolean; staged?: boolean } = 
     const metadata = await scannerService.getRepoMetadata(remoteUrl);
     var repoVisibility = metadata.repoVisibility;
   } catch (e) {
-    console.error(chalk.red("Failed to get git diff or metadata. Are you in a git repository?"));
+    console.error(
+      chalk.red(`Failed to get git diff or metadata: ${e instanceof Error ? e.message : String(e)}`)
+    );
     process.exit(1);
   }
 
@@ -95,6 +165,7 @@ export async function scanCommand(options: { ci?: boolean; staged?: boolean } = 
       diff,
       repoMetadata: { repoVisibility },
       approved: null,
+      secrets,
     } as any);
 
     // Check for findings and assessment
@@ -131,7 +202,6 @@ export async function scanCommand(options: { ci?: boolean; staged?: boolean } = 
       // Direct CIBA polling
       const domain = process.env.BANTAY_AUTH0_DOMAIN || "kuyacarlo.jp.auth0.com";
       const clientId = process.env.BANTAY_AUTH0_CLIENT_ID;
-      const secrets = await loadSecrets();
       const clientSecret =
         process.env.BANTAY_AUTH0_CLIENT_SECRET || secrets.BANTAY_AUTH0_CLIENT_SECRET;
       const auth0UserId =
@@ -236,4 +306,28 @@ export async function scanCommand(options: { ci?: boolean; staged?: boolean } = 
     // Fail-Closed
     process.exit(1);
   }
+}
+
+/**
+ * Reads stdin asynchronously with a timeout
+ */
+async function readStdinAsync(timeoutMs = 500): Promise<string> {
+  return new Promise((resolve) => {
+    let data = "";
+    const timer = setTimeout(() => {
+      process.stdin.pause();
+      resolve(data);
+    }, timeoutMs);
+
+    process.stdin.resume();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      data += chunk;
+    });
+
+    process.stdin.on("end", () => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+  });
 }

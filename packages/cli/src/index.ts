@@ -17,6 +17,9 @@ program
   .description("Scan for secrets and assess risk")
   .option("--staged", "Scan only staged changes")
   .option("--ci", "Scan full branch diff against origin/main (for CI environments)")
+  .option("--pre-push", "Scan changes about to be pushed (handles stdin from git)")
+  .option("--all-files", "Scan all files in the working tree")
+  .option("--all", "Everything — all files AND all commits from the beginning")
   .action(async (options) => {
     try {
       await scanCommand(options);
@@ -27,11 +30,11 @@ program
   });
 
 program
-  .command("init")
+  .command("init [directory]")
   .description("Initialize Bantay and install pre-push hook")
-  .action(async () => {
+  .action(async (directory) => {
     try {
-      await initCommand();
+      await initCommand(directory);
     } catch (error) {
       console.error(error);
       process.exit(1);

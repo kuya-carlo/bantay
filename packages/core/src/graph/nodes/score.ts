@@ -5,8 +5,9 @@ import { RiskAssessmentSchema } from "../../types/schemas";
 /**
  * Resolves the LLM API key from env or encrypted secrets
  */
-async function resolveLlmKey(): Promise<string> {
+async function resolveLlmKey(providedSecrets?: Record<string, string>): Promise<string> {
   if (process.env.BANTAY_LLM_API_KEY) return process.env.BANTAY_LLM_API_KEY;
+  if (providedSecrets?.BANTAY_LLM_API_KEY) return providedSecrets.BANTAY_LLM_API_KEY;
   const secrets = await loadSecrets();
   if (secrets.BANTAY_LLM_API_KEY) return secrets.BANTAY_LLM_API_KEY;
   throw new Error("Not authenticated. Run 'bantay login' first. (Missing BANTAY_LLM_API_KEY)");
@@ -16,7 +17,7 @@ async function resolveLlmKey(): Promise<string> {
  * Node that scores the total risk of the findings using an OpenAI-compatible LLM
  */
 export async function scoreRisk(state: any): Promise<any> {
-  const { findings, repoMetadata } = state;
+  const { findings, repoMetadata, secrets } = state;
 
   if (!findings || findings.length === 0) {
     return {
@@ -26,7 +27,7 @@ export async function scoreRisk(state: any): Promise<any> {
     };
   }
 
-  const apiKey = await resolveLlmKey();
+  const apiKey = await resolveLlmKey(secrets);
   const baseUrl = process.env.BANTAY_LLM_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.BANTAY_LLM_MODEL || "gpt-4-turbo";
 
