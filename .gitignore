@@ -108,6 +108,8 @@ Thumbs.db
 # Agent/spec-kit working files
 .specify/
 .agent/
+.agents/
+.continue/
 specs/
 walkthrough.md
 tsconfig.json.bak
@@ -115,7 +117,4 @@ tsconfig.json.bak
 # LangGraph API
 .langgraph_api
 .aider*
-.agents/
-.continue/
-*test*/
-*demo*/
+
